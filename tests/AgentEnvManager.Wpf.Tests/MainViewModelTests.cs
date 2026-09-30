@@ -70,6 +70,9 @@ public sealed class MainViewModelTests
             viewModel.PathConflicts).Label);
         Assert.Equal("node", Assert.Single(
             viewModel.CommandPathConflicts).Name);
+        Assert.Contains(
+            "顺序 1",
+            Assert.Single(viewModel.CommandPathConflicts).Summary);
         Assert.Equal(DateTimeOffset.UnixEpoch, viewModel.ReportGeneratedAt);
     }
 

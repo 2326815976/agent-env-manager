@@ -10,8 +10,6 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = new MainViewModel(
             new EnvironmentManagerClient(
-                EnvironmentManagerFactory.Create(
-                    Environment.GetEnvironmentVariable(
-                        "AGENT_ENV_MANAGER_HOME"))));
+                EnvironmentManagerFactory.CreateDefault()));
     }
 }

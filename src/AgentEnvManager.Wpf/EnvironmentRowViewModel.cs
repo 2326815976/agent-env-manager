@@ -63,7 +63,7 @@ public sealed record CommandPathConflictViewModel(
         var summary = string.Join(
             "；",
             conflict.Candidates.Select(candidate =>
-                $"{candidate.Path}（顺序 {candidate.Order}，" +
+                $"{candidate.Path}（顺序 {candidate.Order + 1}，" +
                 $"{(candidate.Effective ? "有效" : "被遮蔽")}）"));
         return new CommandPathConflictViewModel(conflict.Name, summary);
     }

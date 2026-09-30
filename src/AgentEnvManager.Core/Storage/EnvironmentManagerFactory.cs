@@ -6,6 +6,12 @@ namespace AgentEnvManager.Core.Storage;
 
 public static class EnvironmentManagerFactory
 {
+    public static EnvironmentManager CreateDefault()
+    {
+        return Create(Environment.GetEnvironmentVariable(
+            "AGENT_ENV_MANAGER_HOME"));
+    }
+
     public static EnvironmentManager Create(string? stateRoot = null)
     {
         var paths = ManagerPaths.Resolve(stateRoot);

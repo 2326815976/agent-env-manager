@@ -95,24 +95,17 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var report = await _client.InspectAsync();
-            Environments.Clear();
-            foreach (var environment in report.Environments)
-            {
-                Environments.Add(new EnvironmentRowViewModel(environment));
-            }
-
-            PathConflicts.Clear();
-            foreach (var conflict in report.PathConflicts)
-            {
-                PathConflicts.Add(PathConflictViewModel.From(conflict));
-            }
-
-            CommandPathConflicts.Clear();
-            foreach (var conflict in report.CommandPathConflicts)
-            {
-                CommandPathConflicts.Add(
-                    CommandPathConflictViewModel.From(conflict));
-            }
+            Replace(
+                Environments,
+                report.Environments.Select(
+                    environment => new EnvironmentRowViewModel(environment)));
+            Replace(
+                PathConflicts,
+                report.PathConflicts.Select(PathConflictViewModel.From));
+            Replace(
+                CommandPathConflicts,
+                report.CommandPathConflicts.Select(
+                    CommandPathConflictViewModel.From));
 
             ReportGeneratedAt = report.GeneratedAtUtc;
             StatusMessage =
@@ -179,5 +172,16 @@ public sealed class MainViewModel : ObservableObject
     private void HandleException(Exception exception)
     {
         StatusMessage = $"操作失败：{exception.Message}";
+    }
+
+    private static void Replace<T>(
+        ObservableCollection<T> target,
+        IEnumerable<T> values)
+    {
+        target.Clear();
+        foreach (var value in values)
+        {
+            target.Add(value);
+        }
     }
 }

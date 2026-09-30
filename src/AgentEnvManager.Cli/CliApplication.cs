@@ -76,7 +76,6 @@ public static class CliApplication
 
     private static EnvironmentManager CreateEnvironmentManager()
     {
-        return EnvironmentManagerFactory.Create(
-            Environment.GetEnvironmentVariable("AGENT_ENV_MANAGER_HOME"));
+        return EnvironmentManagerFactory.CreateDefault();
     }
 }
