@@ -2,6 +2,7 @@ using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
 
@@ -12,6 +13,7 @@ public sealed class EnvironmentManager
     private readonly EnvironmentInspector _inspector;
     private readonly EnvironmentAdopter _adopter;
     private readonly VersionSwitcher _switcher;
+    private readonly EnvironmentMigrator _migrator;
     private readonly IOperationJournal _operationJournal;
     private readonly IEnvironmentManifestStore _manifestStore;
     private readonly EnvironmentVariableService _environmentVariables;
@@ -36,7 +38,9 @@ public sealed class EnvironmentManager
         IEnvironmentVariableRecoveryPointStore?
             environmentVariableRecoveryPointStore = null,
         ManagerPaths? managerPaths = null,
-        IEnumerable<IAgentAdapter>? agentAdapters = null)
+        IEnumerable<IAgentAdapter>? agentAdapters = null,
+        IMigrationOccupancyProbe? migrationOccupancyProbe = null,
+        IEnvironmentPathMover? environmentPathMover = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -91,6 +95,19 @@ public sealed class EnvironmentManager
             link,
             runtimeHealthCheck,
             clock);
+        _migrator = new EnvironmentMigrator(
+            store,
+            recoveryStore,
+            journal,
+            hasher,
+            pathFactory,
+            link,
+            runtimeHealthCheck,
+            migrationOccupancyProbe
+                ?? new WindowsMigrationOccupancyProbe(),
+            environmentPathMover
+                ?? new FileSystemEnvironmentPathMover(),
+            clock);
     }
 
     public Task<InspectionReport> InspectAsync(
@@ -132,6 +149,24 @@ public sealed class EnvironmentManager
         CancellationToken cancellationToken = default)
     {
         return _switcher.SwitchAsync(preview, cancellationToken);
+    }
+
+    public Task<MigrationPreview> PreviewMigrationAsync(
+        EnvironmentFingerprint fingerprint,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        return _migrator.PreviewAsync(
+            fingerprint,
+            destinationPath,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> MigrateEnvironmentAsync(
+        MigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _migrator.MigrateAsync(preview, cancellationToken);
     }
 
     public Task<int> RebuildEnvironmentIndexAsync(
@@ -180,6 +215,27 @@ public sealed class EnvironmentManager
                 $"恢复 {point.OriginalValues.Count} 个环境变量原值。",
                 point.Id,
                 "环境变量恢复为操作前值。");
+        }
+
+        if (operation.Type == OperationType.Migrate)
+        {
+            var migrationPoint = await _recoveryPointStore.GetAsync(
+                operation.RecoveryPointId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("恢复点不存在。");
+            var original = migrationPoint.PreviousManifest
+                ?? throw new InvalidOperationException(
+                    "迁移恢复点缺少原环境记录。");
+            var originalPath =
+                operation.SourceTarget
+                ?? migrationPoint.PreviousManifest.Location;
+            return new OperationRollbackPlan(
+                operation.Id,
+                originalPath,
+                $"将 {operation.Target} 移回 {originalPath}，并恢复激活目标 {operation.PreviousTarget ?? originalPath}。",
+                migrationPoint.Id,
+                operation.ExpectedResult
+                    ?? "迁移前目录和激活目标恢复完成。");
         }
 
         var recoveryPoint = await _recoveryPointStore.GetAsync(
@@ -324,6 +380,9 @@ public sealed class EnvironmentManager
         return operation.Type switch
         {
             OperationType.Switch => await _switcher.RollbackAsync(
+                operationId,
+                cancellationToken),
+            OperationType.Migrate => await _migrator.RollbackAsync(
                 operationId,
                 cancellationToken),
             OperationType.EnvironmentVariables =>

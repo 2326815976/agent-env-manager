@@ -56,11 +56,6 @@ public sealed class FileEnvironmentManifestStore(string manifestDirectory)
             cancellationToken);
         if (existing is not null)
         {
-            if (existing.AssetHash == manifest.AssetHash)
-            {
-                return existing;
-            }
-
             manifest = manifest with
             {
                 Identity = existing.Identity,

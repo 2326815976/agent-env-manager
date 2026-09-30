@@ -4,6 +4,7 @@ public enum OperationType
 {
     Adopt,
     Switch,
+    Migrate,
     EnvironmentVariables,
     AgentBinding
 }
@@ -30,7 +31,12 @@ public sealed record OperationRecord(
     string? RecoveryPointId = null,
     string? FailureReason = null,
     string? Target = null,
-    string? Impact = null);
+    string? Impact = null,
+    string? PreviousTarget = null,
+    string? ExpectedResult = null,
+    string? TargetIdentity = null,
+    string? SourceTarget = null,
+    string? StableActivationPath = null);
 
 public sealed record OperationRollbackPlan(
     string OperationId,

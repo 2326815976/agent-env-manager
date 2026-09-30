@@ -36,11 +36,6 @@ internal sealed class InMemoryEnvironmentManifestStore
                 item.Fingerprint == manifest.Fingerprint);
             if (existing is not null)
             {
-                if (existing.AssetHash == manifest.AssetHash)
-                {
-                    return Task.FromResult(existing);
-                }
-
                 manifest = manifest with
                 {
                     Identity = existing.Identity,

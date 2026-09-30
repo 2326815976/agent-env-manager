@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Scanning;
 
 namespace AgentEnvManager.Core.Storage;
@@ -30,6 +31,8 @@ public static class EnvironmentManagerFactory
             operationJournal: new FileOperationJournal(
                 paths.OperationDirectory),
             managerPaths: paths,
+            migrationOccupancyProbe: new WindowsMigrationOccupancyProbe(),
+            environmentPathMover: new FileSystemEnvironmentPathMover(),
             agentAdapters:
             [
                 new CodexAgentAdapter(
