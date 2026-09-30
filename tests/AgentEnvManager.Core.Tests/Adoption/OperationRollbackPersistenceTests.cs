@@ -41,6 +41,7 @@ public sealed class OperationRollbackPersistenceTests
                 observed.Fingerprint);
             var recoveryPoint = await recoveryStore.CreateAsync(
                 preview,
+                operationId: "operation-1",
                 existingManifest: null);
             var operation = new OperationRecord(
                 "operation-1",

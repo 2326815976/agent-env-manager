@@ -8,11 +8,13 @@ internal sealed class InMemoryEnvironmentRecoveryPointStore
 
     public Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
+        string operationId,
         EnvironmentManifest? existingManifest,
         CancellationToken cancellationToken = default)
     {
         var point = new AdoptionRecoveryPoint(
             Guid.NewGuid().ToString("N"),
+            operationId,
             preview.Fingerprint,
             existingManifest?.Identity,
             existingManifest,

@@ -8,12 +8,14 @@ public sealed class FileEnvironmentRecoveryPointStore(string recoveryDirectory)
 {
     public async Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
+        string operationId,
         EnvironmentManifest? existingManifest,
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(recoveryDirectory);
         var point = new AdoptionRecoveryPoint(
             Guid.NewGuid().ToString("N"),
+            operationId,
             preview.Fingerprint,
             existingManifest?.Identity,
             existingManifest,

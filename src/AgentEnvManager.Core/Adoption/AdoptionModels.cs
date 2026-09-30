@@ -23,6 +23,7 @@ public sealed record EnvironmentManifest(
 
 public sealed record AdoptionRecoveryPoint(
     string Id,
+    string OperationId,
     EnvironmentFingerprint Fingerprint,
     EnvironmentIdentity? PreviousIdentity,
     EnvironmentManifest? PreviousManifest,
@@ -84,6 +85,7 @@ public interface IEnvironmentRecoveryPointStore
 {
     Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
+        string operationId,
         EnvironmentManifest? existingManifest,
         CancellationToken cancellationToken = default);
 

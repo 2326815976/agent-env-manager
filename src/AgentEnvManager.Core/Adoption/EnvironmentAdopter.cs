@@ -72,25 +72,25 @@ internal sealed class EnvironmentAdopter(
         try
         {
             ValidateAdoption(preview);
-            operation = OperationStateMachine.MarkValidated(
-                operation,
-                timeProvider);
-            await operationJournal.SaveAsync(operation, cancellationToken);
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.MarkValidated(operation, timeProvider),
+                cancellationToken);
 
             var recoveryPoint = await recoveryPointStore.CreateAsync(
                 preview,
+                operation.Id,
                 existing,
                 cancellationToken);
-            operation = OperationStateMachine.MarkRecoveryReady(
-                operation,
-                recoveryPoint.Id,
-                timeProvider);
-            await operationJournal.SaveAsync(operation, cancellationToken);
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.MarkRecoveryReady(
+                    operation,
+                    recoveryPoint.Id,
+                    timeProvider),
+                cancellationToken);
 
-            operation = OperationStateMachine.BeginExecution(
-                operation,
-                timeProvider);
-            await operationJournal.SaveAsync(operation, cancellationToken);
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.BeginExecution(operation, timeProvider),
+                cancellationToken);
 
             savedManifest = await manifestStore.SaveAsync(
                 new EnvironmentManifest(
@@ -110,10 +110,11 @@ internal sealed class EnvironmentAdopter(
                 cancellationToken);
 
             await RebuildIndexAsync(cancellationToken);
-            operation = OperationStateMachine.BeginVerification(
-                operation,
-                timeProvider);
-            await operationJournal.SaveAsync(operation, cancellationToken);
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.BeginVerification(
+                    operation,
+                    timeProvider),
+                cancellationToken);
 
             var verified = await manifestStore.FindByFingerprintAsync(
                 preview.Fingerprint,
@@ -124,10 +125,9 @@ internal sealed class EnvironmentAdopter(
                 throw new InvalidOperationException("纳管验证失败。");
             }
 
-            operation = OperationStateMachine.Complete(
-                operation,
-                timeProvider);
-            await operationJournal.SaveAsync(operation, cancellationToken);
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.Complete(operation, timeProvider),
+                cancellationToken);
             return new ManagedEnvironment(verified.Identity, verified);
         }
         catch (Exception exception)
@@ -172,6 +172,12 @@ internal sealed class EnvironmentAdopter(
         if (operation.State is OperationState.Succeeded
             or OperationState.RolledBack)
         {
+            operation = OperationStateMachine.Reject(
+                operation,
+                OperationState.RolledBack,
+                "该操作当前状态不能回滚。",
+                timeProvider);
+            await operationJournal.SaveAsync(operation, CancellationToken.None);
             throw new InvalidOperationException("该操作当前状态不能回滚。");
         }
 
@@ -180,27 +186,36 @@ internal sealed class EnvironmentAdopter(
             var recoveryPoint = await recoveryPointStore.GetAsync(
                 operation.RecoveryPointId,
                 cancellationToken);
-            if (recoveryPoint is not null)
+            if (recoveryPoint is null)
             {
-                var current = await manifestStore.FindByFingerprintAsync(
-                    recoveryPoint.Fingerprint,
-                    cancellationToken);
-                if (current is not null)
-                {
-                    await manifestStore.DeleteAsync(
-                        current.Identity,
-                        cancellationToken);
-                }
-
-                if (recoveryPoint.PreviousManifest is not null)
-                {
-                    await manifestStore.SaveAsync(
-                        recoveryPoint.PreviousManifest,
-                        cancellationToken);
-                }
-
-                await RebuildIndexAsync(cancellationToken);
+                throw new InvalidOperationException("恢复点不存在，无法回滚。");
             }
+
+            var current = await manifestStore.FindByFingerprintAsync(
+                recoveryPoint.Fingerprint,
+                cancellationToken);
+            if (current is not null
+                && current.OperationId != recoveryPoint.OperationId)
+            {
+                throw new InvalidOperationException(
+                    "目标 manifest 已被后续操作更新，拒绝覆盖。");
+            }
+
+            if (current is not null)
+            {
+                await manifestStore.DeleteAsync(
+                    current.Identity,
+                    cancellationToken);
+            }
+
+            if (recoveryPoint.PreviousManifest is not null)
+            {
+                await manifestStore.SaveAsync(
+                    recoveryPoint.PreviousManifest,
+                    cancellationToken);
+            }
+
+            await RebuildIndexAsync(cancellationToken);
         }
 
         if (operation.State != OperationState.Failed)
@@ -215,6 +230,14 @@ internal sealed class EnvironmentAdopter(
         operation = OperationStateMachine.Rollback(
             operation,
             timeProvider);
+        await operationJournal.SaveAsync(operation, cancellationToken);
+        return operation;
+    }
+
+    private async Task<OperationRecord> SaveTransitionAsync(
+        OperationRecord operation,
+        CancellationToken cancellationToken)
+    {
         await operationJournal.SaveAsync(operation, cancellationToken);
         return operation;
     }

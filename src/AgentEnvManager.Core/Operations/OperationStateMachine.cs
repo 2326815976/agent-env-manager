@@ -95,6 +95,19 @@ internal static class OperationStateMachine
             timeProvider);
     }
 
+    public static OperationRecord Reject(
+        OperationRecord operation,
+        OperationState attemptedState,
+        string reason,
+        TimeProvider timeProvider)
+    {
+        return operation with
+        {
+            UpdatedAtUtc = timeProvider.GetUtcNow(),
+            FailureReason = $"已拒绝 {operation.State} -> {attemptedState}: {reason}"
+        };
+    }
+
     private static OperationRecord Transition(
         OperationRecord operation,
         OperationState next,

@@ -118,6 +118,43 @@ public sealed class EnvironmentAdoptionTests
             operationJournal.History.Select(record => record.State));
     }
 
+    [Fact]
+    public async Task RollbackOperationAsync_records_rejection_reason_for_completed_operation()
+    {
+        var probe = new StubEnvironmentProbe(
+            new EnvironmentProbeResult(
+                [
+                    new EnvironmentAsset(
+                        EnvironmentAssetKind.ToolRuntime,
+                        "Node.js",
+                        "22.22.0",
+                        @"D:\Software\node",
+                        IsSystemComponent: false,
+                        Source: DiscoverySourceInfo.PathCommand)
+                ],
+                []));
+        var operationJournal = new RecordingOperationJournal();
+        var manager = new EnvironmentManager(
+            probe,
+            manifestStore: new InMemoryManifestStore(),
+            index: new RecordingIndex(),
+            assetHasher: new FixedAssetHasher("asset-hash"),
+            recoveryPointStore: new RecordingRecoveryPointStore(),
+            operationJournal: operationJournal,
+            activationPathFactory: new FixedActivationPathFactory());
+        var inventory = await manager.InspectAsync();
+        var observed = Assert.Single(inventory.Environments);
+        var managed = await manager.AdoptAsync(observed.Fingerprint);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.RollbackOperationAsync(managed.Manifest.OperationId));
+
+        var rejected = await operationJournal.GetAsync(
+            managed.Manifest.OperationId);
+        Assert.NotNull(rejected);
+        Assert.Contains("已拒绝", rejected.FailureReason);
+    }
+
     private sealed class StubEnvironmentProbe(EnvironmentProbeResult result) : IEnvironmentProbe
     {
         public Task<EnvironmentProbeResult> ProbeAsync(CancellationToken cancellationToken = default)
@@ -182,11 +219,13 @@ public sealed class EnvironmentAdoptionTests
 
         public Task<AdoptionRecoveryPoint> CreateAsync(
             AdoptionPreview preview,
+            string operationId,
             EnvironmentManifest? existingManifest,
             CancellationToken cancellationToken = default)
         {
             var point = new AdoptionRecoveryPoint(
                 $"recovery-{Points.Count + 1}",
+                operationId,
                 preview.Fingerprint,
                 existingManifest?.Identity,
                 existingManifest,
