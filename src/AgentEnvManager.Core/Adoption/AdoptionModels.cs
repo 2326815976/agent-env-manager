@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Inspection;
 
 namespace AgentEnvManager.Core.Adoption;
@@ -19,7 +20,9 @@ public sealed record EnvironmentManifest(
     string RecoveryPointId,
     string OperationId,
     bool IsSystemComponent,
-    DateTimeOffset AdoptedAtUtc);
+    DateTimeOffset AdoptedAtUtc,
+    string ActivationIdentity = "",
+    string ManagedEntryPath = "");
 
 public sealed record AdoptionRecoveryPoint(
     string Id,
@@ -38,7 +41,8 @@ public sealed record AdoptionPreview(
     string StableActivationPath,
     string Impact,
     bool IsAlreadyManaged,
-    EnvironmentIdentity? ExistingIdentity);
+    EnvironmentIdentity? ExistingIdentity,
+    string ManagedEntryPath = "");
 
 public sealed record ManagedEnvironment(
     EnvironmentIdentity Identity,
@@ -78,7 +82,9 @@ public interface IEnvironmentAssetHasher
 
 public interface IStableActivationPathFactory
 {
-    string Create(EnvironmentIdentity identity);
+    string Create(ActivationKey key);
+
+    string CreateManagedEntry(ActivationKey key);
 }
 
 public interface IEnvironmentRecoveryPointStore

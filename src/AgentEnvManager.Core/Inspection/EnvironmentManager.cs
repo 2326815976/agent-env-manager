@@ -54,6 +54,7 @@ public sealed class EnvironmentManager
             store,
             recoveryStore,
             journal,
+            pathFactory,
             link,
             runtimeHealthCheck,
             clock);
@@ -94,10 +95,10 @@ public sealed class EnvironmentManager
     }
 
     public Task<OperationRecord> SwitchVersionAsync(
-        EnvironmentFingerprint fingerprint,
+        VersionSwitchPreview preview,
         CancellationToken cancellationToken = default)
     {
-        return _switcher.SwitchAsync(fingerprint, cancellationToken);
+        return _switcher.SwitchAsync(preview, cancellationToken);
     }
 
     public Task<int> RebuildEnvironmentIndexAsync(

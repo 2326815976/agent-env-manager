@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Inspection;
 
@@ -15,8 +16,13 @@ internal sealed class FixedAssetHasher(string value) : IEnvironmentAssetHasher
 
 internal sealed class FixedActivationPathFactory : IStableActivationPathFactory
 {
-    public string Create(EnvironmentIdentity identity)
+    public string Create(ActivationKey key)
     {
-        return $@"%LOCALAPPDATA%\AgentEnvManager\activations\{identity.Value}\current";
+        return $@"%LOCALAPPDATA%\AgentEnvManager\activations\{key.Value}\current";
+    }
+
+    public string CreateManagedEntry(ActivationKey key)
+    {
+        return $@"%LOCALAPPDATA%\AgentEnvManager\shims\{key.Value}";
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using AgentEnvManager.Core.Adoption;
 
 namespace AgentEnvManager.Core.Activation;
@@ -7,7 +8,7 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
 {
     public async Task<RuntimeHealthCheckResult> CheckAsync(
         EnvironmentManifest manifest,
-        string activationPath,
+        string managedEntryPath,
         CancellationToken cancellationToken = default)
     {
         var command = GetHealthCommand(manifest);
@@ -25,15 +26,13 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
-            WorkingDirectory = activationPath
+            WorkingDirectory = managedEntryPath
         };
         startInfo.ArgumentList.Add("/d");
         startInfo.ArgumentList.Add("/s");
         startInfo.ArgumentList.Add("/c");
         startInfo.ArgumentList.Add(command);
-        var currentPath = startInfo.Environment["PATH"] ?? string.Empty;
-        startInfo.Environment["PATH"] =
-            $"{activationPath};{currentPath}";
+        startInfo.Environment["PATH"] = managedEntryPath;
 
         using var process = Process.Start(startInfo);
         if (process is null)
@@ -52,15 +51,26 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
         var error = (await errorTask).Trim();
         var detail = string.IsNullOrWhiteSpace(output) ? error : output;
 
-        return process.ExitCode == 0
-            ? new RuntimeHealthCheckResult(
-                true,
-                string.IsNullOrWhiteSpace(detail) ? "健康检查通过。" : detail)
-            : new RuntimeHealthCheckResult(
+        if (process.ExitCode != 0)
+        {
+            return new RuntimeHealthCheckResult(
                 false,
                 string.IsNullOrWhiteSpace(detail)
                     ? $"健康检查退出码 {process.ExitCode}。"
                     : detail);
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.Version)
+            && !VersionMatches(detail, manifest.Version))
+        {
+            return new RuntimeHealthCheckResult(
+                false,
+                $"健康检查输出未包含目标版本 {manifest.Version}: {detail}");
+        }
+
+        return new RuntimeHealthCheckResult(
+            true,
+            string.IsNullOrWhiteSpace(detail) ? "健康检查通过。" : detail);
     }
 
     private static string? GetHealthCommand(EnvironmentManifest manifest)
@@ -75,5 +85,13 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
                 "pwsh -NoLogo -NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"",
             _ => null
         };
+    }
+
+    private static bool VersionMatches(string output, string version)
+    {
+        return Regex.IsMatch(
+            output,
+            $@"(?<![A-Za-z0-9_.-]){Regex.Escape(version)}(?![A-Za-z0-9_.-])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 }

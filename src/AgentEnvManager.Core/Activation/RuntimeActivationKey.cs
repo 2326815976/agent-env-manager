@@ -1,18 +1,27 @@
+using System.Security.Cryptography;
+using System.Text;
+using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Inspection;
 
 namespace AgentEnvManager.Core.Activation;
 
 internal static class RuntimeActivationKey
 {
-    public static string Create(EnvironmentAsset asset)
+    public static ActivationKey Create(EnvironmentAsset asset)
     {
-        var name = new string(asset.Name
+        var readableName = new string(asset.Name
             .Trim()
             .Select(character => char.IsLetterOrDigit(character)
                 ? character
                 : '-')
             .ToArray())
-            .Trim('-');
-        return $"{asset.Kind}-{name}";
+            .Trim('-')
+            .ToLowerInvariant();
+        var identityMaterial = $"{asset.Kind}\n{asset.Name.Trim()}";
+        var hash = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(identityMaterial)))[..12].ToLowerInvariant();
+
+        return new ActivationKey(new EnvironmentIdentity(
+            $"runtime-activation-{asset.Kind.ToString().ToLowerInvariant()}-{readableName}-{hash}"));
     }
 }

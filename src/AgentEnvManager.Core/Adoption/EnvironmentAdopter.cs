@@ -30,6 +30,14 @@ internal sealed class EnvironmentAdopter(
             cancellationToken);
         var proposedIdentity = existing?.Identity
             ?? new EnvironmentIdentity(fingerprint.Value);
+        var activationKey = string.IsNullOrWhiteSpace(existing?.ActivationIdentity)
+            ? RuntimeActivationKey.Create(observed.Asset)
+            : new ActivationKey(
+                new EnvironmentIdentity(existing.ActivationIdentity));
+        var managedEntryPath = string.IsNullOrWhiteSpace(
+            existing?.ManagedEntryPath)
+            ? activationPathFactory.CreateManagedEntry(activationKey)
+            : existing.ManagedEntryPath;
 
         return new AdoptionPreview(
             fingerprint,
@@ -37,11 +45,11 @@ internal sealed class EnvironmentAdopter(
             observed.Asset,
             assetHash,
             existing?.StableActivationPath
-            ?? activationPathFactory.Create(new EnvironmentIdentity(
-                RuntimeActivationKey.Create(observed.Asset))),
+            ?? activationPathFactory.Create(activationKey),
             "纳管会创建可移植 manifest 并重建本地索引，不会移动原始文件。",
             existing is not null,
-            existing?.Identity);
+            existing?.Identity,
+            managedEntryPath);
     }
 
     public async Task<ManagedEnvironment> AdoptAsync(
@@ -94,6 +102,17 @@ internal sealed class EnvironmentAdopter(
                 OperationStateMachine.BeginExecution(operation, timeProvider),
                 cancellationToken);
 
+            var activationKey = string.IsNullOrWhiteSpace(
+                existing?.ActivationIdentity)
+                ? RuntimeActivationKey.Create(preview.Asset)
+                : new ActivationKey(
+                    new EnvironmentIdentity(existing.ActivationIdentity));
+            var managedEntryPath = !string.IsNullOrWhiteSpace(
+                preview.ManagedEntryPath)
+                ? preview.ManagedEntryPath
+                : string.IsNullOrWhiteSpace(existing?.ManagedEntryPath)
+                    ? activationPathFactory.CreateManagedEntry(activationKey)
+                    : existing.ManagedEntryPath;
             savedManifest = await manifestStore.SaveAsync(
                 new EnvironmentManifest(
                     preview.ProposedIdentity,
@@ -108,7 +127,9 @@ internal sealed class EnvironmentAdopter(
                     recoveryPoint.Id,
                     operation.Id,
                     preview.Asset.IsSystemComponent,
-                    timeProvider.GetUtcNow()),
+                    timeProvider.GetUtcNow(),
+                    activationKey.Value,
+                    managedEntryPath),
                 cancellationToken);
 
             await RebuildIndexAsync(cancellationToken);
@@ -291,6 +312,11 @@ internal sealed class EnvironmentAdopter(
         if (string.IsNullOrWhiteSpace(preview.StableActivationPath))
         {
             throw new InvalidOperationException("稳定激活路径不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.ManagedEntryPath))
+        {
+            throw new InvalidOperationException("受管入口路径不能为空。");
         }
     }
 }

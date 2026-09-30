@@ -47,10 +47,23 @@ internal sealed class RecordingActivationLink : IEnvironmentActivationLink
     private readonly Dictionary<string, string> _targets =
         new(StringComparer.OrdinalIgnoreCase);
 
+    public bool ThrowAfterSet { get; set; }
+
+    public bool ReturnNullOnGet { get; set; }
+
+    public string? LastSetTarget { get; set; }
+
+    public List<string?> SetHistory { get; } = [];
+
     public Task<string?> GetTargetAsync(
         string activationPath,
         CancellationToken cancellationToken = default)
     {
+        if (ReturnNullOnGet)
+        {
+            return Task.FromResult<string?>(null);
+        }
+
         return Task.FromResult(_targets.GetValueOrDefault(activationPath));
     }
 
@@ -60,6 +73,14 @@ internal sealed class RecordingActivationLink : IEnvironmentActivationLink
         CancellationToken cancellationToken = default)
     {
         _targets[activationPath] = GetActivationTarget(targetPath);
+        LastSetTarget = _targets[activationPath];
+        SetHistory.Add(LastSetTarget);
+        if (ThrowAfterSet)
+        {
+            ThrowAfterSet = false;
+            throw new InvalidOperationException("模拟激活点切换后失败。");
+        }
+
         return Task.CompletedTask;
     }
 
@@ -89,7 +110,9 @@ internal sealed class RecordingActivationLink : IEnvironmentActivationLink
     }
 }
 
-internal sealed class RecordingRuntimeHealthCheck(bool isHealthy)
+internal sealed class RecordingRuntimeHealthCheck(
+    bool isHealthy,
+    Action? onCheck = null)
     : IRuntimeHealthCheck
 {
     public Task<RuntimeHealthCheckResult> CheckAsync(
@@ -97,6 +120,7 @@ internal sealed class RecordingRuntimeHealthCheck(bool isHealthy)
         string activationPath,
         CancellationToken cancellationToken = default)
     {
+        onCheck?.Invoke();
         return Task.FromResult(new RuntimeHealthCheckResult(
             isHealthy,
             isHealthy ? "健康" : "目标版本健康检查失败"));

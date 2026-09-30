@@ -1,4 +1,7 @@
-using System.Diagnostics;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace AgentEnvManager.Core.Activation;
 
@@ -14,8 +17,9 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
             return Task.FromResult<string?>(null);
         }
 
-        var directory = new DirectoryInfo(activationPath);
-        if (!EntryExists(activationPath))
+        var normalizedPath = NormalizePath(activationPath);
+        var directory = new DirectoryInfo(normalizedPath);
+        if (!EntryExists(normalizedPath))
         {
             return Task.FromResult<string?>(null);
         }
@@ -23,7 +27,7 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
         var target = directory.LinkTarget;
         return Task.FromResult(string.IsNullOrWhiteSpace(target)
             ? null
-            : Path.GetFullPath(target));
+            : NormalizePath(target));
     }
 
     public Task<bool> TargetExistsAsync(
@@ -33,12 +37,13 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(
             !string.IsNullOrWhiteSpace(targetPath)
-            && (Directory.Exists(targetPath) || File.Exists(targetPath)));
+            && (Directory.Exists(NormalizePath(targetPath))
+                || File.Exists(NormalizePath(targetPath))));
     }
 
     public string GetActivationTarget(string location)
     {
-        var fullPath = Path.GetFullPath(location);
+        var fullPath = NormalizePath(location);
         if (Directory.Exists(fullPath))
         {
             return fullPath;
@@ -49,12 +54,12 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
             : fullPath;
     }
 
-    public async Task SetTargetAsync(
+    public Task SetTargetAsync(
         string activationPath,
         string targetPath,
         CancellationToken cancellationToken = default)
     {
-        var fullActivationPath = Path.GetFullPath(activationPath);
+        var fullActivationPath = NormalizePath(activationPath);
         var fullTargetPath = GetActivationTarget(targetPath);
         var parent = Path.GetDirectoryName(fullActivationPath)
             ?? throw new InvalidOperationException("激活路径缺少父目录。");
@@ -64,10 +69,8 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
         string? backupPath = null;
         try
         {
-            await CreateJunctionAsync(
-                temporaryPath,
-                fullTargetPath,
-                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            CreateJunction(temporaryPath, fullTargetPath);
 
             if (EntryExists(fullActivationPath))
             {
@@ -80,7 +83,7 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
             Directory.Move(temporaryPath, fullActivationPath);
             if (backupPath is not null)
             {
-                Directory.Delete(backupPath);
+                TryDeleteJunction(backupPath);
             }
         }
         catch
@@ -99,6 +102,8 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
 
             throw;
         }
+
+        return Task.CompletedTask;
     }
 
     public Task DeleteAsync(
@@ -106,46 +111,129 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (EntryExists(activationPath))
+        var normalizedPath = NormalizePath(activationPath);
+        if (EntryExists(normalizedPath))
         {
-            EnsureReparsePoint(activationPath);
-            Directory.Delete(activationPath);
+            EnsureReparsePoint(normalizedPath);
+            Directory.Delete(normalizedPath);
         }
 
         return Task.CompletedTask;
     }
 
-    private static async Task CreateJunctionAsync(
+    private static void CreateJunction(
         string linkPath,
-        string targetPath,
-        CancellationToken cancellationToken)
+        string targetPath)
     {
-        var startInfo = new ProcessStartInfo(
-            Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe")
+        Directory.CreateDirectory(linkPath);
+        var substituteName = $@"\??\{targetPath}";
+        var substituteBytes = Encoding.Unicode.GetBytes(substituteName);
+        var printBytes = Encoding.Unicode.GetBytes(targetPath);
+        var pathBufferLength =
+            substituteBytes.Length + sizeof(char)
+            + printBytes.Length + sizeof(char);
+        var reparseDataLength =
+            8 + pathBufferLength;
+        var bufferSize = 8 + reparseDataLength;
+        var buffer = Marshal.AllocHGlobal(bufferSize);
+        try
         {
-            UseShellExecute = false,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("/d");
-        startInfo.ArgumentList.Add("/c");
-        startInfo.ArgumentList.Add("mklink");
-        startInfo.ArgumentList.Add("/J");
-        startInfo.ArgumentList.Add(linkPath);
-        startInfo.ArgumentList.Add(targetPath);
+            Marshal.WriteInt32(
+                buffer,
+                0,
+                unchecked((int)IoReparseTagMountPoint));
+            Marshal.WriteInt16(buffer, 4, checked((short)reparseDataLength));
+            Marshal.WriteInt16(buffer, 6, 0);
+            Marshal.WriteInt16(buffer, 8, 0);
+            Marshal.WriteInt16(
+                buffer,
+                10,
+                checked((short)substituteBytes.Length));
+            Marshal.WriteInt16(
+                buffer,
+                12,
+                checked((short)(substituteBytes.Length + sizeof(char))));
+            Marshal.WriteInt16(
+                buffer,
+                14,
+                checked((short)printBytes.Length));
+            var pathBuffer = IntPtr.Add(buffer, 16);
+            Marshal.Copy(
+                substituteBytes,
+                0,
+                pathBuffer,
+                substituteBytes.Length);
+            Marshal.WriteInt16(
+                pathBuffer,
+                substituteBytes.Length,
+                0);
+            var printNameOffset = substituteBytes.Length + sizeof(char);
+            Marshal.Copy(
+                printBytes,
+                0,
+                IntPtr.Add(pathBuffer, printNameOffset),
+                printBytes.Length);
+            Marshal.WriteInt16(
+                pathBuffer,
+                printNameOffset + printBytes.Length,
+                0);
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("无法启动 Junction 创建进程。");
-        var output = await process.StandardOutput.ReadToEndAsync(
-            cancellationToken);
-        var error = await process.StandardError.ReadToEndAsync(
-            cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        if (process.ExitCode != 0)
+            using var handle = CreateFile(
+                linkPath,
+                GenericWrite,
+                FileShareRead | FileShareWrite | FileShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "无法打开 Junction 目标目录。");
+            }
+
+            if (!DeviceIoControl(
+                    handle,
+                    FsctlSetReparsePoint,
+                    buffer,
+                    bufferSize,
+                    IntPtr.Zero,
+                    0,
+                    out _,
+                    IntPtr.Zero))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "无法设置 Junction reparse point。");
+            }
+        }
+        catch
         {
-            throw new InvalidOperationException(
-                $"创建 Junction 失败: {error}{output}");
+            if (Directory.Exists(linkPath))
+            {
+                Directory.Delete(linkPath);
+            }
+
+            throw;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    private static void TryDeleteJunction(string path)
+    {
+        try
+        {
+            Directory.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
@@ -175,4 +263,54 @@ public sealed class WindowsJunctionActivationLink : IEnvironmentActivationLink
             return false;
         }
     }
+
+    private static string NormalizePath(string path)
+    {
+        const string localAppDataToken = "%LOCALAPPDATA%";
+        var expandedPath = path.StartsWith(
+            localAppDataToken,
+            StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData),
+                path[localAppDataToken.Length..].TrimStart('\\', '/'))
+            : path;
+
+        return Path.GetFullPath(expandedPath);
+    }
+
+    private const uint GenericWrite = 0x40000000;
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const uint FsctlSetReparsePoint = 0x000900A4;
+    private const uint IoReparseTagMountPoint = 0xA0000003;
+
+    [DllImport(
+        "kernel32.dll",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        IntPtr securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeviceIoControl(
+        SafeFileHandle device,
+        uint controlCode,
+        IntPtr inBuffer,
+        int inBufferSize,
+        IntPtr outBuffer,
+        int outBufferSize,
+        out int bytesReturned,
+        IntPtr overlapped);
 }

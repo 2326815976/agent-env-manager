@@ -2,11 +2,17 @@ using AgentEnvManager.Core.Adoption;
 
 namespace AgentEnvManager.Core.Activation;
 
+public sealed record ActivationKey(EnvironmentIdentity Identity)
+{
+    public string Value => Identity.Value;
+}
+
 public sealed record VersionSwitchPreview(
     EnvironmentFingerprint TargetFingerprint,
     EnvironmentManifest Target,
     EnvironmentManifest? Active,
     string ActivationPath,
+    string ManagedEntryPath,
     string Impact,
     bool IsAlreadyActive);
 
@@ -40,6 +46,6 @@ public interface IRuntimeHealthCheck
 {
     Task<RuntimeHealthCheckResult> CheckAsync(
         EnvironmentManifest manifest,
-        string activationPath,
+        string managedEntryPath,
         CancellationToken cancellationToken = default);
 }

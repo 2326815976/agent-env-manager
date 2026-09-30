@@ -25,14 +25,20 @@ public sealed class WindowsActivationIntegrationTests
 
         await manager.AdoptAsync(firstObserved.Fingerprint);
         await manager.AdoptAsync(secondObserved.Fingerprint);
-        await manager.SwitchVersionAsync(firstObserved.Fingerprint);
-        await manager.SwitchVersionAsync(secondObserved.Fingerprint);
+        await SwitchAsync(manager, firstObserved.Fingerprint);
+        var preview = await manager.PreviewVersionSwitchAsync(
+            secondObserved.Fingerprint);
+        await manager.SwitchVersionAsync(preview);
 
         var version = await RunCommandThroughActivationAsync(
-            fixture.ActivationPath,
+            preview.ManagedEntryPath,
             "node --version");
 
         Assert.Equal("24.1.0", version);
+        Assert.Equal(
+            fixture.ActivationPath,
+            await new WindowsJunctionActivationLink().GetTargetAsync(
+                fixture.ManagedEntryPath));
     }
 
     [Fact]
@@ -49,10 +55,10 @@ public sealed class WindowsActivationIntegrationTests
             environment.Asset.Location == Path.Combine(second, "node.cmd"));
         await manager.AdoptAsync(firstObserved.Fingerprint);
         await manager.AdoptAsync(secondObserved.Fingerprint);
-        await manager.SwitchVersionAsync(firstObserved.Fingerprint);
+        await SwitchAsync(manager, firstObserved.Fingerprint);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => manager.SwitchVersionAsync(secondObserved.Fingerprint));
+            () => SwitchAsync(manager, secondObserved.Fingerprint));
 
         Assert.Equal(
             first,
@@ -62,6 +68,39 @@ public sealed class WindowsActivationIntegrationTests
             fixture.ActivationPath,
             "node --version");
         Assert.Equal("22.22.0", version);
+    }
+
+    [Fact]
+    public async Task WindowsJunctionActivationLink_handles_shell_metacharacters_in_paths()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "AgentEnvManager.Tests",
+            $"runtime-%TEMP%-&-{Guid.NewGuid():N}");
+        var target = Path.Combine(root, "target");
+        var link = Path.Combine(root, "link");
+        Directory.CreateDirectory(target);
+        var activationLink = new WindowsJunctionActivationLink();
+
+        try
+        {
+            await activationLink.SetTargetAsync(link, target);
+
+            Assert.Equal(target, await activationLink.GetTargetAsync(link));
+        }
+        finally
+        {
+            await activationLink.DeleteAsync(link);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task<OperationRecord> SwitchAsync(
+        EnvironmentManager manager,
+        EnvironmentFingerprint fingerprint)
+    {
+        var preview = await manager.PreviewVersionSwitchAsync(fingerprint);
+        return await manager.SwitchVersionAsync(preview);
     }
 
     private static async Task<string> RunCommandThroughActivationAsync(
@@ -110,9 +149,15 @@ public sealed class WindowsActivationIntegrationTests
                 "activations",
                 "node",
                 "current");
+            ManagedEntryPath = Path.Combine(
+                _root,
+                "shims",
+                "node");
         }
 
         public string ActivationPath { get; }
+
+        public string ManagedEntryPath { get; }
 
         public string CreateNodeVersion(string directoryName, string version)
         {
@@ -147,34 +192,49 @@ public sealed class WindowsActivationIntegrationTests
                 recoveryPointStore: new RecordingRecoveryPointStore(),
                 operationJournal: journal,
                 activationPathFactory: new FixedActivationPathFactory(
-                    ActivationPath),
+                    ActivationPath,
+                    ManagedEntryPath),
                 activationLink: new WindowsJunctionActivationLink(),
                 healthCheck: new ProcessRuntimeHealthCheck());
         }
 
         public void Dispose()
         {
-            try
+            foreach (var linkPath in new[]
+                     {
+                         ManagedEntryPath,
+                         ActivationPath
+                     })
             {
-                new WindowsJunctionActivationLink()
-                    .DeleteAsync(ActivationPath)
-                    .GetAwaiter()
-                    .GetResult();
-            }
-            catch (InvalidOperationException)
-            {
+                try
+                {
+                    new WindowsJunctionActivationLink()
+                        .DeleteAsync(linkPath)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+                catch (InvalidOperationException)
+                {
+                }
             }
 
             Directory.Delete(_root, recursive: true);
         }
     }
 
-    private sealed class FixedActivationPathFactory(string activationPath)
+    private sealed class FixedActivationPathFactory(
+        string activationPath,
+        string managedEntryPath)
         : IStableActivationPathFactory
     {
-        public string Create(EnvironmentIdentity identity)
+        public string Create(ActivationKey key)
         {
             return activationPath;
+        }
+
+        public string CreateManagedEntry(ActivationKey key)
+        {
+            return managedEntryPath;
         }
     }
 
