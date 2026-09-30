@@ -13,6 +13,8 @@ internal sealed class RecordingUserEnvironmentVariableStore(
             : new Dictionary<string, string?>(
                 values,
                 StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandableNames =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public int BroadcastCount { get; private set; }
 
@@ -29,9 +31,17 @@ internal sealed class RecordingUserEnvironmentVariableStore(
         return Task.FromResult(_values.GetValueOrDefault(name));
     }
 
+    public Task<bool> IsExpandableAsync(
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_expandableNames.Contains(name));
+    }
+
     public Task SetAsync(
         string name,
         string? value,
+        bool isExpandable = false,
         CancellationToken cancellationToken = default)
     {
         var failure = FailOnSet?.Invoke(name, value);
@@ -44,10 +54,19 @@ internal sealed class RecordingUserEnvironmentVariableStore(
         if (value is null)
         {
             _values.Remove(name);
+            _expandableNames.Remove(name);
         }
         else
         {
             _values[name] = value;
+            if (isExpandable)
+            {
+                _expandableNames.Add(name);
+            }
+            else
+            {
+                _expandableNames.Remove(name);
+            }
         }
 
         return Task.CompletedTask;
@@ -76,6 +95,7 @@ internal sealed class RecordingEnvironmentVariableRecoveryPointStore
     public Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,
+        IReadOnlyDictionary<string, bool>? expandableValues = null,
         CancellationToken cancellationToken = default)
     {
         var point = new EnvironmentVariableRecoveryPoint(
@@ -83,7 +103,12 @@ internal sealed class RecordingEnvironmentVariableRecoveryPointStore
             new Dictionary<string, string?>(
                 originalValues,
                 StringComparer.OrdinalIgnoreCase),
-            DateTimeOffset.UnixEpoch);
+            DateTimeOffset.UnixEpoch,
+            expandableValues is null
+                ? null
+                : new Dictionary<string, bool>(
+                    expandableValues,
+                    StringComparer.OrdinalIgnoreCase));
         _points[point.Id] = point;
         return Task.FromResult(point);
     }

@@ -178,6 +178,75 @@ public sealed class EnvironmentVariableTransactionTests
     }
 
     [Fact]
+    public async Task ApplyEnvironmentVariableUpdateAsync_rejects_reused_preview()
+    {
+        var store = new RecordingUserEnvironmentVariableStore();
+        var manager = CreateManager(
+            store,
+            new RecordingOperationJournal());
+        var preview = await manager.PreviewManagedVariableUpdateAsync(
+            [new EnvironmentVariableChange(
+                "AGENT_ENV_MANAGER_MODE",
+                "managed")]);
+        await manager.ApplyEnvironmentVariableUpdateAsync(preview);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.ApplyEnvironmentVariableUpdateAsync(preview));
+
+        Assert.Contains("未经当前管理器授权", exception.Message);
+    }
+
+    [Fact]
+    public async Task ApplyEnvironmentVariableUpdateAsync_rejects_tampered_authorized_preview()
+    {
+        var manager = CreateManager(
+            new RecordingUserEnvironmentVariableStore(),
+            new RecordingOperationJournal());
+        var preview = await manager.PreviewManagedVariableUpdateAsync(
+            [new EnvironmentVariableChange(
+                "AGENT_ENV_MANAGER_MODE",
+                "managed")]);
+        var tampered = new EnvironmentVariableUpdatePreview(
+            preview.OriginalValues,
+            new Dictionary<string, string?>
+            {
+                ["AGENT_ENV_MANAGER_MODE"] = "tampered"
+            },
+            [new EnvironmentVariableChange(
+                "AGENT_ENV_MANAGER_MODE",
+                "tampered")],
+            preview.Impact,
+            preview.ExpandableValues,
+            preview.AuthorizationToken);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.ApplyEnvironmentVariableUpdateAsync(tampered));
+
+        Assert.Contains("未经当前管理器授权", exception.Message);
+    }
+
+    [Fact]
+    public async Task ApplyEnvironmentVariableUpdateAsync_preserves_expandable_value_kind()
+    {
+        var store = new RecordingUserEnvironmentVariableStore();
+        await store.SetAsync(
+            "AGENT_ENV_MANAGER_MODE",
+            "%USERPROFILE%\\mode",
+            isExpandable: true);
+        var manager = CreateManager(
+            store,
+            new RecordingOperationJournal());
+        var preview = await manager.PreviewManagedVariableUpdateAsync(
+            [new EnvironmentVariableChange(
+                "AGENT_ENV_MANAGER_MODE",
+                "%USERPROFILE%\\next")]);
+
+        await manager.ApplyEnvironmentVariableUpdateAsync(preview);
+
+        Assert.True(await store.IsExpandableAsync("AGENT_ENV_MANAGER_MODE"));
+    }
+
+    [Fact]
     public async Task RollbackOperationAsync_restores_interrupted_environment_transaction()
     {
         var store = new RecordingUserEnvironmentVariableStore(

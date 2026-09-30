@@ -70,9 +70,9 @@ internal static class VersionResolver
                 request.RuntimeName,
                 selected.Version,
                 selected.Source,
-                string.Join(
+                $"{string.Join(
                     "；",
-                    candidates.Select(candidate => candidate.Explanation)),
+                    candidates.Select(candidate => candidate.Explanation))}；选择 {selected.Explanation}。",
                 candidates);
     }
 

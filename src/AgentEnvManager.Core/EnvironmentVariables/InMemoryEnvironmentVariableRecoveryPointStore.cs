@@ -9,6 +9,7 @@ internal sealed class InMemoryEnvironmentVariableRecoveryPointStore
     public Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,
+        IReadOnlyDictionary<string, bool>? expandableValues = null,
         CancellationToken cancellationToken = default)
     {
         var point = new EnvironmentVariableRecoveryPoint(
@@ -16,7 +17,12 @@ internal sealed class InMemoryEnvironmentVariableRecoveryPointStore
             new Dictionary<string, string?>(
                 originalValues,
                 StringComparer.OrdinalIgnoreCase),
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            expandableValues is null
+                ? null
+                : new Dictionary<string, bool>(
+                    expandableValues,
+                    StringComparer.OrdinalIgnoreCase));
         _points[point.Id] = point;
         return Task.FromResult(point);
     }

@@ -118,6 +118,31 @@ public sealed class ManagedPathUpdateTests
         Assert.Contains("未绑定到已纳管环境", exception.Message);
     }
 
+    [Fact]
+    public async Task ApplyEnvironmentVariableUpdateAsync_rejects_path_if_manifest_was_removed()
+    {
+        var managedRoot = ManagerPaths.Resolve().ShimDirectory;
+        var managedEntry = Path.Combine(managedRoot, "node");
+        var manifest = CreateManifest(managedEntry);
+        var manifestStore = new InMemoryManifestStore();
+        await manifestStore.SaveAsync(manifest);
+        var store = new RecordingUserEnvironmentVariableStore();
+        var manager = new EnvironmentManager(
+            new StubEnvironmentProbe(
+                new EnvironmentProbeResult([], [])),
+            assetHasher: new FixedAssetHasher("asset-hash"),
+            manifestStore: manifestStore,
+            userEnvironmentVariableStore: store);
+        var preview = await manager.PreviewManagedPathUpdateAsync(
+            [managedEntry]);
+        await manifestStore.DeleteAsync(manifest.Identity);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => manager.ApplyEnvironmentVariableUpdateAsync(preview));
+
+        Assert.Contains("未绑定到已纳管环境", exception.Message);
+    }
+
     private static InMemoryManifestStore CreateManifestStore(
         params string[] managedEntries)
     {

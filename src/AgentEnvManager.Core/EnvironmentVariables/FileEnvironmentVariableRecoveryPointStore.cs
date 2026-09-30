@@ -10,6 +10,7 @@ public sealed class FileEnvironmentVariableRecoveryPointStore(
     public async Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,
+        IReadOnlyDictionary<string, bool>? expandableValues = null,
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(recoveryDirectory);
@@ -18,7 +19,12 @@ public sealed class FileEnvironmentVariableRecoveryPointStore(
             new Dictionary<string, string?>(
                 originalValues,
                 StringComparer.OrdinalIgnoreCase),
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            expandableValues is null
+                ? null
+                : new Dictionary<string, bool>(
+                    expandableValues,
+                    StringComparer.OrdinalIgnoreCase));
         var path = Path.Combine(recoveryDirectory, $"{point.Id}.json");
         await AtomicJsonFile.WriteAsync(path, point, cancellationToken);
         return point;

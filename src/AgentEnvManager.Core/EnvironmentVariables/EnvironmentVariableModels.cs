@@ -13,7 +13,9 @@ public sealed record EnvironmentVariableUpdatePreview
         IReadOnlyDictionary<string, string?> originalValues,
         IReadOnlyDictionary<string, string?> desiredValues,
         IReadOnlyList<EnvironmentVariableChange> changes,
-        string impact)
+        string impact,
+        IReadOnlyDictionary<string, bool>? expandableValues = null,
+        string authorizationToken = "")
     {
         OriginalValues = new ReadOnlyDictionary<string, string?>(
             new Dictionary<string, string?>(
@@ -25,6 +27,14 @@ public sealed record EnvironmentVariableUpdatePreview
                 StringComparer.OrdinalIgnoreCase));
         Changes = Array.AsReadOnly(changes.ToArray());
         Impact = impact;
+        ExpandableValues = new ReadOnlyDictionary<string, bool>(
+            expandableValues is null
+                ? new Dictionary<string, bool>(
+                    StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, bool>(
+                    expandableValues,
+                    StringComparer.OrdinalIgnoreCase));
+        AuthorizationToken = authorizationToken;
     }
 
     public IReadOnlyDictionary<string, string?> OriginalValues { get; }
@@ -34,12 +44,17 @@ public sealed record EnvironmentVariableUpdatePreview
     public IReadOnlyList<EnvironmentVariableChange> Changes { get; }
 
     public string Impact { get; }
+
+    public IReadOnlyDictionary<string, bool> ExpandableValues { get; }
+
+    public string AuthorizationToken { get; }
 }
 
 public sealed record EnvironmentVariableRecoveryPoint(
     string Id,
     IReadOnlyDictionary<string, string?> OriginalValues,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    IReadOnlyDictionary<string, bool>? ExpandableValues = null);
 
 public sealed record EnvironmentVariableTransactionResult(
     OperationRecord Operation,
@@ -50,6 +65,7 @@ public interface IEnvironmentVariableRecoveryPointStore
     Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,
+        IReadOnlyDictionary<string, bool>? expandableValues = null,
         CancellationToken cancellationToken = default);
 
     Task<EnvironmentVariableRecoveryPoint?> GetAsync(
@@ -63,9 +79,17 @@ public interface IUserEnvironmentVariableStore
         string name,
         CancellationToken cancellationToken = default);
 
+    Task<bool> IsExpandableAsync(
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(false);
+    }
+
     Task SetAsync(
         string name,
         string? value,
+        bool isExpandable = false,
         CancellationToken cancellationToken = default);
 
     Task BroadcastAsync(

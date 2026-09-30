@@ -1,5 +1,8 @@
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Adoption;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AgentEnvManager.Core.EnvironmentVariables;
 
@@ -12,6 +15,9 @@ internal sealed class EnvironmentVariableService(
     TimeProvider timeProvider)
 {
     private const string ManagedVariablePrefix = "AGENT_ENV_MANAGER_";
+    private readonly ConcurrentDictionary<string, string> _authorizedPreviews =
+        new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _applyLock = new(1, 1);
     private readonly ManagedPathEditor _pathEditor =
         new(managedPathRoot);
 
@@ -29,6 +35,12 @@ internal sealed class EnvironmentVariableService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in managedEntries)
         {
+            if (!Path.IsPathFullyQualified(entry))
+            {
+                throw new InvalidOperationException(
+                    $"PATH 条目必须是完全限定路径: {entry}");
+            }
+
             var fullPath = Path.GetFullPath(entry);
             if (!allowedEntries.Contains(fullPath))
             {
@@ -40,12 +52,15 @@ internal sealed class EnvironmentVariableService(
         var originalPath = await store.GetAsync(
             "Path",
             cancellationToken);
+        var isPathExpandable = await store.IsExpandableAsync(
+            "Path",
+            cancellationToken);
         var desiredPath = _pathEditor.Apply(
             originalPath,
             managedEntries);
         var change = new EnvironmentVariableChange("Path", desiredPath);
 
-        return new EnvironmentVariableUpdatePreview(
+        return CreateAuthorizedPreview(
             new Dictionary<string, string?>(
                 StringComparer.OrdinalIgnoreCase)
             {
@@ -57,7 +72,12 @@ internal sealed class EnvironmentVariableService(
                 ["Path"] = desiredPath
             },
             [change],
-            "只更新管理器 shims 根目录下的 PATH 条目，保留未知条目及相对顺序。");
+            "只更新管理器 shims 根目录下的 PATH 条目，保留未知条目及相对顺序。",
+            new Dictionary<string, bool>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                ["Path"] = isPathExpandable
+            });
     }
 
     public async Task<EnvironmentVariableUpdatePreview> PreviewManagedVariablesAsync(
@@ -69,20 +89,26 @@ internal sealed class EnvironmentVariableService(
             StringComparer.OrdinalIgnoreCase);
         var desiredValues = new Dictionary<string, string?>(
             StringComparer.OrdinalIgnoreCase);
+        var expandableValues = new Dictionary<string, bool>(
+            StringComparer.OrdinalIgnoreCase);
 
         foreach (var change in uniqueChanges)
         {
             originalValues[change.Name] = await store.GetAsync(
                 change.Name,
                 cancellationToken);
+            expandableValues[change.Name] = await store.IsExpandableAsync(
+                change.Name,
+                cancellationToken);
             desiredValues[change.Name] = change.Value;
         }
 
-        return new EnvironmentVariableUpdatePreview(
+        return CreateAuthorizedPreview(
             originalValues,
             desiredValues,
             uniqueChanges,
-            "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。");
+            "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。",
+            expandableValues);
     }
 
     public async Task<EnvironmentVariableTransactionResult> ApplyAsync(
@@ -90,6 +116,34 @@ internal sealed class EnvironmentVariableService(
         CancellationToken cancellationToken = default)
     {
         ValidatePreview(preview);
+        if (!_authorizedPreviews.TryRemove(
+                preview.AuthorizationToken,
+                out var authorizedHash)
+            || !string.Equals(
+                authorizedHash,
+                ComputePreviewHash(preview),
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "环境变量预览未经当前管理器授权。");
+        }
+
+        await ValidateManifestOwnershipAsync(preview, cancellationToken);
+        await _applyLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await ApplyCoreAsync(preview, cancellationToken);
+        }
+        finally
+        {
+            _applyLock.Release();
+        }
+    }
+
+    private async Task<EnvironmentVariableTransactionResult> ApplyCoreAsync(
+        EnvironmentVariableUpdatePreview preview,
+        CancellationToken cancellationToken)
+    {
         foreach (var original in preview.OriginalValues)
         {
             var current = await store.GetAsync(
@@ -120,6 +174,7 @@ internal sealed class EnvironmentVariableService(
             var recoveryPoint = await recoveryPointStore.CreateAsync(
                 operation.Id,
                 preview.OriginalValues,
+                preview.ExpandableValues,
                 cancellationToken);
             operation = await SaveTransitionAsync(
                 OperationStateMachine.MarkRecoveryReady(
@@ -137,6 +192,7 @@ internal sealed class EnvironmentVariableService(
                 await store.SetAsync(
                     change.Name,
                     change.Value,
+                    preview.ExpandableValues.GetValueOrDefault(change.Name),
                     cancellationToken);
             }
 
@@ -278,6 +334,8 @@ internal sealed class EnvironmentVariableService(
             await store.SetAsync(
                 original.Key,
                 original.Value,
+                recoveryPoint.ExpandableValues?.GetValueOrDefault(
+                    original.Key) ?? false,
                 cancellationToken);
         }
 
@@ -341,6 +399,105 @@ internal sealed class EnvironmentVariableService(
                 throw new InvalidOperationException(
                     $"变量 {change.Name} 不属于管理器。");
             }
+        }
+    }
+
+    private async Task ValidateManifestOwnershipAsync(
+        EnvironmentVariableUpdatePreview preview,
+        CancellationToken cancellationToken)
+    {
+        var pathChange = preview.Changes.FirstOrDefault(change =>
+            string.Equals(
+                change.Name,
+                "Path",
+                StringComparison.OrdinalIgnoreCase));
+        if (pathChange is null)
+        {
+            return;
+        }
+
+        var manifests = await environmentManifestStore.ReadAllAsync(
+            cancellationToken);
+        var allowedEntries = manifests
+            .Where(manifest =>
+                !string.IsNullOrWhiteSpace(manifest.ManagedEntryPath))
+            .Select(manifest => Path.GetFullPath(
+                manifest.ManagedEntryPath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in _pathEditor.ExtractManagedEntries(
+                     pathChange.Value))
+        {
+            if (!allowedEntries.Contains(entry))
+            {
+                throw new InvalidOperationException(
+                    $"PATH 条目未绑定到已纳管环境: {entry}");
+            }
+        }
+    }
+
+    private EnvironmentVariableUpdatePreview CreateAuthorizedPreview(
+        IReadOnlyDictionary<string, string?> originalValues,
+        IReadOnlyDictionary<string, string?> desiredValues,
+        IReadOnlyList<EnvironmentVariableChange> changes,
+        string impact,
+        IReadOnlyDictionary<string, bool>? expandableValues = null)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var preview = new EnvironmentVariableUpdatePreview(
+            originalValues,
+            desiredValues,
+            changes,
+            impact,
+            expandableValues,
+            token);
+        _authorizedPreviews[token] = ComputePreviewHash(preview);
+        return preview;
+    }
+
+    private static string ComputePreviewHash(
+        EnvironmentVariableUpdatePreview preview)
+    {
+        var builder = new StringBuilder();
+        AppendValues(builder, "original", preview.OriginalValues);
+        AppendValues(builder, "desired", preview.DesiredValues);
+        foreach (var change in preview.Changes)
+        {
+            builder.Append("change|")
+                .Append(change.Name.ToUpperInvariant())
+                .Append('|')
+                .Append(change.Value)
+                .Append('\n');
+        }
+
+        foreach (var expandable in preview.ExpandableValues
+                     .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.Append("expandable|")
+                .Append(expandable.Key.ToUpperInvariant())
+                .Append('|')
+                .Append(expandable.Value)
+                .Append('\n');
+        }
+
+        return Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(builder.ToString())));
+    }
+
+    private static void AppendValues(
+        StringBuilder builder,
+        string label,
+        IReadOnlyDictionary<string, string?> values)
+    {
+        foreach (var value in values.OrderBy(
+                     item => item.Key,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            builder.Append(label)
+                .Append('|')
+                .Append(value.Key.ToUpperInvariant())
+                .Append('|')
+                .Append(value.Value)
+                .Append('\n');
         }
     }
 
