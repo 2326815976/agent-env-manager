@@ -7,6 +7,8 @@ namespace AgentEnvManager.Core.Storage;
 
 public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
 {
+    private const long EmbeddedContentLimit = 1024 * 1024;
+
     public async Task<string> ComputeHashAsync(
         EnvironmentAsset asset,
         CancellationToken cancellationToken = default)
@@ -42,7 +44,7 @@ public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
         return Convert.ToHexString(hash);
     }
 
-    private static Task<string> HashDirectoryAsync(
+    private static async Task<string> HashDirectoryAsync(
         string root,
         CancellationToken cancellationToken)
     {
@@ -56,7 +58,7 @@ public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
         foreach (var path in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var entryName = Path.GetFileName(path)
+            var entryName = Path.GetRelativePath(root, path)
                 .Replace('/', '\\')
                 .ToUpperInvariant();
             hash.AppendData(Encoding.UTF8.GetBytes(entryName));
@@ -73,9 +75,15 @@ public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
                 var info = new FileInfo(path);
                 if (!attributes.HasFlag(FileAttributes.Directory))
                 {
-                    hash.AppendData(Encoding.UTF8.GetBytes(
-                        info.Length.ToString()));
+                    hash.AppendData(Encoding.UTF8.GetBytes(info.Length.ToString()));
                     hash.AppendData([0]);
+                    if (info.Length <= EmbeddedContentLimit)
+                    {
+                        await AppendFileContentHashAsync(
+                            hash,
+                            path,
+                            cancellationToken);
+                    }
                 }
 
                 hash.AppendData(Encoding.UTF8.GetBytes(
@@ -84,7 +92,30 @@ public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
             }
         }
 
-        return Task.FromResult(
-            Convert.ToHexString(hash.GetHashAndReset()));
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static async Task AppendFileContentHashAsync(
+        IncrementalHash hash,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 81920,
+            useAsync: true);
+        var buffer = new byte[81920];
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(
+            buffer,
+            cancellationToken)) > 0)
+        {
+            hash.AppendData(buffer.AsSpan(0, bytesRead));
+        }
+
+        hash.AppendData([0]);
     }
 }

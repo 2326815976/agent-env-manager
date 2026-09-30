@@ -18,8 +18,8 @@ public sealed class EnvironmentManager
         IStableActivationPathFactory? activationPathFactory = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
-        var store = manifestStore ?? EmptyManifestStore.Instance;
-        var environmentIndex = index ?? UnavailableEnvironmentIndex.Instance;
+        var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
+        var environmentIndex = index ?? new InMemoryEnvironmentIndex();
         var hasher = assetHasher ?? new FileSystemEnvironmentAssetHasher();
         var recoveryStore = recoveryPointStore
             ?? InMemoryEnvironmentRecoveryPointStore.Instance;
@@ -73,15 +73,4 @@ public sealed class EnvironmentManager
         return _adopter.RebuildIndexAsync(cancellationToken);
     }
 
-    private sealed class UnavailableEnvironmentIndex : IEnvironmentIndex
-    {
-        public static UnavailableEnvironmentIndex Instance { get; } = new();
-
-        public Task RebuildAsync(
-            IReadOnlyList<EnvironmentManifest> manifests,
-            CancellationToken cancellationToken = default)
-        {
-            throw new InvalidOperationException("尚未配置环境索引。");
-        }
-    }
 }

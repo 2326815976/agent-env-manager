@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using AgentEnvManager.Core.Adoption;
 
 namespace AgentEnvManager.Core.Storage;
@@ -7,15 +6,6 @@ namespace AgentEnvManager.Core.Storage;
 public sealed class FileEnvironmentManifestStore(string manifestDirectory)
     : IEnvironmentManifestStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        Converters =
-        {
-            new JsonStringEnumConverter()
-        }
-    };
-
     public async Task<IReadOnlyList<EnvironmentManifest>> ReadAllAsync(
         CancellationToken cancellationToken = default)
     {
@@ -33,7 +23,7 @@ public sealed class FileEnvironmentManifestStore(string manifestDirectory)
             var json = await File.ReadAllTextAsync(path, cancellationToken);
             var manifest = JsonSerializer.Deserialize<EnvironmentManifest>(
                 json,
-                JsonOptions)
+                ManagerJson.Options)
                 ?? throw new InvalidDataException($"无法读取 manifest: {path}");
             manifests.Add(manifest);
         }
@@ -82,7 +72,7 @@ public sealed class FileEnvironmentManifestStore(string manifestDirectory)
             manifestDirectory,
             $"{manifest.Identity.Value}.json");
         var temporaryPath = $"{path}.tmp";
-        var json = JsonSerializer.Serialize(manifest, JsonOptions);
+        var json = JsonSerializer.Serialize(manifest, ManagerJson.Options);
         await File.WriteAllTextAsync(
             temporaryPath,
             json,
