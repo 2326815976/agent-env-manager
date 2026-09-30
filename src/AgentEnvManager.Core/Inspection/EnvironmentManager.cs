@@ -294,11 +294,13 @@ public sealed class EnvironmentManager
 
     public Task RollbackAgentBindingAsync(
         string agentName,
-        AgentBinding binding,
+        AgentBindingPlan plan,
+        AgentConfigurationRecoveryPoint recoveryPoint,
         CancellationToken cancellationToken = default)
     {
         return GetAgentAdapter(agentName).RollbackAsync(
-            binding,
+            plan,
+            recoveryPoint,
             cancellationToken);
     }
 

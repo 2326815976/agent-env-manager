@@ -44,7 +44,9 @@ public sealed record AgentBindingRequest(
     string ManagedEntryPath,
     string RuntimeName,
     string RuntimeVersion,
-    IReadOnlyList<string>? HealthArguments = null);
+    IReadOnlyList<string>? HealthArguments = null,
+    string? WorkspacePath = null,
+    string? RuntimeCommand = null);
 
 public sealed record AgentDiscoveryRequest(
     string? ConfigurationDirectory = null,
@@ -63,6 +65,8 @@ public sealed record AgentBindingPlan(
     string ManagedEntryPath,
     string RuntimeName,
     string RuntimeVersion,
+    string WorkspacePath,
+    string RuntimeCommand,
     IReadOnlyList<string> HealthArguments,
     string BindingFilePath,
     string BindingContent);
@@ -74,6 +78,8 @@ public sealed record AgentBinding(
     string ManagedEntryPath,
     string RuntimeName,
     string RuntimeVersion,
+    string WorkspacePath,
+    string RuntimeCommand,
     IReadOnlyList<string> HealthArguments,
     string BindingFilePath,
     AgentConfigurationRecoveryPoint RecoveryPoint,
@@ -114,6 +120,7 @@ public interface IAgentAdapter
         CancellationToken cancellationToken = default);
 
     Task RollbackAsync(
-        AgentBinding binding,
+        AgentBindingPlan plan,
+        AgentConfigurationRecoveryPoint recoveryPoint,
         CancellationToken cancellationToken = default);
 }

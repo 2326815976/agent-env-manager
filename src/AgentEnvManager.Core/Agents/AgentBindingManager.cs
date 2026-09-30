@@ -24,6 +24,7 @@ public sealed class AgentBindingManager(
             impact: $"通过受管入口 {plan.ManagedEntryPath} 绑定 {plan.AgentName}。");
         await _operationJournal.SaveAsync(operation, cancellationToken);
         AgentBinding? binding = null;
+        AgentConfigurationRecoveryPoint? recoveryPoint = null;
         try
         {
             operation = await SaveTransitionAsync(
@@ -31,7 +32,7 @@ public sealed class AgentBindingManager(
                     operation,
                     _timeProvider),
                 cancellationToken);
-            var recoveryPoint = await adapter.CreateRecoveryPointAsync(
+            recoveryPoint = await adapter.CreateRecoveryPointAsync(
                 plan,
                 cancellationToken);
             operation = await SaveTransitionAsync(
@@ -68,9 +69,20 @@ public sealed class AgentBindingManager(
         }
         catch (Exception exception)
         {
-            if (binding is not null)
+            var rollbackSucceeded = true;
+            if (recoveryPoint is not null)
             {
-                await adapter.RollbackAsync(binding, CancellationToken.None);
+                try
+                {
+                    await adapter.RollbackAsync(
+                        plan,
+                        recoveryPoint,
+                        CancellationToken.None);
+                }
+                catch
+                {
+                    rollbackSucceeded = false;
+                }
             }
 
             operation = OperationStateMachine.Fail(
@@ -78,10 +90,20 @@ public sealed class AgentBindingManager(
                 exception.Message,
                 _timeProvider);
             await _operationJournal.SaveAsync(operation, CancellationToken.None);
-            operation = OperationStateMachine.Rollback(operation, _timeProvider);
-            await _operationJournal.SaveAsync(operation, CancellationToken.None);
+            if (rollbackSucceeded)
+            {
+                operation = OperationStateMachine.Rollback(
+                    operation,
+                    _timeProvider);
+                await _operationJournal.SaveAsync(
+                    operation,
+                    CancellationToken.None);
+            }
+
             throw new InvalidOperationException(
-                $"Agent 健康检查失败，已恢复原绑定: {exception.Message}",
+                rollbackSucceeded
+                    ? $"Agent 绑定失败，已恢复原绑定: {exception.Message}"
+                    : $"Agent 绑定失败，恢复原绑定失败: {exception.Message}",
                 exception);
         }
     }

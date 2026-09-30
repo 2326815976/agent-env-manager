@@ -69,6 +69,12 @@ public sealed class CodexAgentAdapter(
             "never",
             $"Run {request.RuntimeName} --version"
         ];
+        var workspacePath = string.IsNullOrWhiteSpace(request.WorkspacePath)
+            ? request.ConfigurationDirectory
+            : Path.GetFullPath(request.WorkspacePath);
+        var runtimeCommand = string.IsNullOrWhiteSpace(request.RuntimeCommand)
+            ? request.RuntimeName
+            : request.RuntimeCommand;
         return Task.FromResult(new AgentBindingPlan(
             Name,
             request.ConfigurationDirectory,
@@ -76,6 +82,8 @@ public sealed class CodexAgentAdapter(
             request.ManagedEntryPath,
             request.RuntimeName,
             request.RuntimeVersion,
+            workspacePath,
+            runtimeCommand,
             healthArguments,
             bindingFilePath,
             content));
@@ -109,6 +117,8 @@ public sealed class CodexAgentAdapter(
             plan.ManagedEntryPath,
             plan.RuntimeName,
             plan.RuntimeVersion,
+            plan.WorkspacePath,
+            plan.RuntimeCommand,
             plan.HealthArguments,
             plan.BindingFilePath,
             recoveryPoint);
@@ -128,7 +138,7 @@ public sealed class CodexAgentAdapter(
         return processRunner.RunAsync(
             binding.Executable,
             arguments,
-            binding.ConfigurationDirectory,
+            binding.WorkspacePath,
             CreateEnvironment(binding, managedEntryPath),
             cancellationToken);
     }
@@ -143,6 +153,7 @@ public sealed class CodexAgentAdapter(
             cancellationToken);
         var output = $"{result.StandardOutput}\n{result.StandardError}";
         var healthy = result.ExitCode == 0
+            && ContainsSuccessfulToolExecution(result.StandardOutput)
             && Regex.IsMatch(
                 output,
                 $@"(?<![A-Za-z0-9_.-]){Regex.Escape(binding.RuntimeVersion)}(?![A-Za-z0-9_.-])",
@@ -155,11 +166,12 @@ public sealed class CodexAgentAdapter(
     }
 
     public Task RollbackAsync(
-        AgentBinding binding,
+        AgentBindingPlan plan,
+        AgentConfigurationRecoveryPoint recoveryPoint,
         CancellationToken cancellationToken = default)
     {
         return backupStore.RestoreAsync(
-            binding.RecoveryPoint,
+            recoveryPoint,
             cancellationToken);
     }
 
@@ -175,5 +187,50 @@ public sealed class CodexAgentAdapter(
                 $"{managedEntryPath};" +
                 $"{Environment.GetEnvironmentVariable("PATH")}"
         };
+    }
+
+    private static bool ContainsSuccessfulToolExecution(string output)
+    {
+        foreach (var line in output.Split(
+                     ['\r', '\n'],
+                     StringSplitOptions.RemoveEmptyEntries
+                     | StringSplitOptions.TrimEntries))
+        {
+            if (!line.StartsWith('{'))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var root = document.RootElement;
+                if (!root.TryGetProperty("type", out var type)
+                    && root.TryGetProperty("item", out var item))
+                {
+                    root = item;
+                    root.TryGetProperty("type", out type);
+                }
+
+                if (type.ValueKind != JsonValueKind.String
+                    || type.GetString() is not (
+                        "command_execution" or "tool_call"))
+                {
+                    continue;
+                }
+
+                if (!root.TryGetProperty("exit_code", out var exitCode)
+                    || exitCode.ValueKind != JsonValueKind.Number
+                    || exitCode.GetInt32() == 0)
+                {
+                    return true;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return false;
     }
 }

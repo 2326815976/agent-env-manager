@@ -91,6 +91,11 @@ public sealed class CodexAgentAdapterTests
             File.WriteAllText(
                 Path.Combine(managedEntry, "node.cmd"),
                 "@echo off\r\necho 24.1.0\r\n");
+            var healthScript = Path.Combine(codexHome, "health-check.ps1");
+            File.WriteAllText(
+                healthScript,
+                "$v = (node --version).Trim()\r\n" +
+                "Write-Output ('{\"type\":\"command_execution\",\"command\":\"node --version\",\"exit_code\":0,\"output\":\"' + $v + '\"}')\r\n");
             var adapter = new CodexAgentAdapter(
                 new SystemAgentProcessRunner(),
                 new FileAgentConfigurationBackupStore(
@@ -105,8 +110,8 @@ public sealed class CodexAgentAdapterTests
                     HealthArguments:
                     [
                         "-NoProfile",
-                        "-Command",
-                        "node --version"
+                        "-File",
+                        healthScript
                     ]));
 
             var binding = await new AgentBindingManager(adapter).BindAsync(plan);
