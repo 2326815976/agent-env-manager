@@ -1,0 +1,137 @@
+<Window x:Class="AgentEnvManager.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Agent 环境管理"
+        Width="1100"
+        Height="720"
+        MinWidth="900"
+        MinHeight="560"
+        Background="#F5F7F8">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock DockPanel.Dock="Left"
+                       FontSize="24"
+                       FontWeight="SemiBold"
+                       Foreground="#1D2B36"
+                       Text="Agent 环境管理" />
+            <TextBlock DockPanel.Dock="Right"
+                       VerticalAlignment="Center"
+                       Foreground="#52616B"
+                       Text="体检与纳管" />
+        </DockPanel>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,12">
+            <Button Content="扫描"
+                    Command="{Binding ScanCommand}"
+                    Padding="16,8"
+                    Margin="0,0,8,0" />
+            <Button Content="预览纳管"
+                    Command="{Binding PreviewAdoptionCommand}"
+                    Padding="16,8"
+                    Margin="0,0,8,0" />
+            <Button Content="确认纳管"
+                    Command="{Binding AdoptCommand}"
+                    Padding="16,8" />
+        </StackPanel>
+
+        <TabControl Grid.Row="2">
+            <TabItem Header="环境清单">
+                <DataGrid ItemsSource="{Binding Environments}"
+                          SelectedItem="{Binding SelectedEnvironment, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          RowHeaderWidth="0"
+                          Background="White"
+                          BorderBrush="#D7DFE4"
+                          BorderThickness="1">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="对象类型"
+                                            Binding="{Binding TypeLabel}"
+                                            Width="120" />
+                        <DataGridTextColumn Header="名称"
+                                            Binding="{Binding Name}"
+                                            Width="150" />
+                        <DataGridTextColumn Header="版本"
+                                            Binding="{Binding Version}"
+                                            Width="120" />
+                        <DataGridTextColumn Header="管理状态"
+                                            Binding="{Binding ManagementStateLabel}"
+                                            Width="110" />
+                        <DataGridTextColumn Header="健康状态"
+                                            Binding="{Binding HealthStateLabel}"
+                                            Width="100" />
+                        <DataGridTextColumn Header="位置"
+                                            Binding="{Binding Location}"
+                                            Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+            <TabItem Header="体检报告">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding ReportGeneratedAt, StringFormat=生成时间：{0}}" />
+                        <TextBlock Margin="0,16,0,4"
+                                   FontWeight="SemiBold"
+                                   Text="PATH 冲突" />
+                        <ItemsControl ItemsSource="{Binding PathConflicts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock Text="{Binding Label}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Margin="12,0,0,0"
+                                                   Foreground="#52616B"
+                                                   Text="{Binding ScopesLabel}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Margin="0,16,0,4"
+                                   FontWeight="SemiBold"
+                                   Text="命令遮蔽冲突" />
+                        <ItemsControl ItemsSource="{Binding CommandPathConflicts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Margin="12,0,0,0"
+                                                   Text="{Binding Summary}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <StatusBar Grid.Row="3"
+                   Margin="0,12,0,0"
+                   Background="Transparent">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}" />
+            </StatusBarItem>
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock Text="{Binding AdoptionImpact}"
+                           MaxWidth="640"
+                           TextWrapping="Wrap"
+                           Foreground="#7A4A00" />
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
