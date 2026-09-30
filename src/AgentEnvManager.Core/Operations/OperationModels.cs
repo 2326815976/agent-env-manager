@@ -31,6 +31,13 @@ public sealed record OperationRecord(
     string? Target = null,
     string? Impact = null);
 
+public sealed record OperationRollbackPlan(
+    string OperationId,
+    string Target,
+    string Impact,
+    string RecoveryPointId,
+    string ExpectedResult);
+
 public interface IOperationJournal
 {
     Task<IReadOnlyList<OperationRecord>> ReadAllAsync(

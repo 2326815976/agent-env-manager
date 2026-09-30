@@ -41,4 +41,8 @@ public interface IEnvironmentManagerClient
     Task<OperationRecord> RollbackOperationAsync(
         string operationId,
         CancellationToken cancellationToken = default);
+
+    Task<OperationRollbackPlan> PreviewRollbackAsync(
+        string operationId,
+        CancellationToken cancellationToken = default);
 }

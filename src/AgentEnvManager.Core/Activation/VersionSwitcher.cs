@@ -51,6 +51,7 @@ internal sealed class VersionSwitcher(
             return preview;
         }
 
+        await ValidateSwitchAsync(preview, cancellationToken);
         var operation = OperationStateMachine.Create(
             OperationType.Switch,
             $"切换 {target.Name} 到 {target.Version}",
@@ -58,10 +59,19 @@ internal sealed class VersionSwitcher(
             target: target.Location,
             impact: preview.Impact);
         await operationJournal.SaveAsync(operation, cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkValidated(operation, timeProvider),
+            cancellationToken);
         var recoveryPoint = await recoveryPointStore.CreateAsync(
             ToAdoptionPreview(target),
             operation.Id,
             active,
+            cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPoint.Id,
+                timeProvider),
             cancellationToken);
         return preview with
         {
@@ -100,28 +110,12 @@ internal sealed class VersionSwitcher(
         var executionStarted = false;
         try
         {
-            await ValidateSwitchAsync(preview, cancellationToken);
-            operation = await SaveTransitionAsync(
-                OperationStateMachine.MarkValidated(operation, timeProvider),
+            var prepared = await PrepareSwitchPlanAsync(
+                preview,
+                operation,
                 cancellationToken);
-
-            var recoveryPoint = string.IsNullOrWhiteSpace(
-                preview.RecoveryPointId)
-                ? await recoveryPointStore.CreateAsync(
-                    ToAdoptionPreview(preview.Target),
-                    operation.Id,
-                    preview.Active,
-                    cancellationToken)
-                : await recoveryPointStore.GetAsync(
-                    preview.RecoveryPointId,
-                    cancellationToken)
-                    ?? throw new InvalidOperationException("切换恢复点不存在。");
-            operation = await SaveTransitionAsync(
-                OperationStateMachine.MarkRecoveryReady(
-                    operation,
-                    recoveryPoint.Id,
-                    timeProvider),
-                cancellationToken);
+            operation = prepared.Operation;
+            var recoveryPoint = prepared.RecoveryPoint;
 
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginExecution(operation, timeProvider),
@@ -283,6 +277,46 @@ internal sealed class VersionSwitcher(
     {
         await operationJournal.SaveAsync(operation, cancellationToken);
         return operation;
+    }
+
+    private async Task<(
+        OperationRecord Operation,
+        AdoptionRecoveryPoint RecoveryPoint)> PrepareSwitchPlanAsync(
+            VersionSwitchPreview preview,
+            OperationRecord operation,
+            CancellationToken cancellationToken)
+    {
+        if (operation.State == OperationState.RecoveryReady
+            && !string.IsNullOrWhiteSpace(preview.RecoveryPointId))
+        {
+            var existingPoint = await recoveryPointStore.GetAsync(
+                preview.RecoveryPointId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("切换恢复点不存在。");
+            return (operation, existingPoint);
+        }
+
+        if (operation.State != OperationState.Draft)
+        {
+            throw new InvalidOperationException("切换计划状态无效。");
+        }
+
+        await ValidateSwitchAsync(preview, cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkValidated(operation, timeProvider),
+            cancellationToken);
+        var recoveryPoint = await recoveryPointStore.CreateAsync(
+            ToAdoptionPreview(preview.Target),
+            operation.Id,
+            preview.Active,
+            cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPoint.Id,
+                timeProvider),
+            cancellationToken);
+        return (operation, recoveryPoint);
     }
 
     private async Task ValidateSwitchAsync(

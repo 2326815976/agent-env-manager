@@ -67,10 +67,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedEnvironment, value))
             {
-                _pendingAdoption = null;
-                AdoptionImpact = string.Empty;
-                PendingTarget = string.Empty;
-                PendingRecoveryPoint = string.Empty;
+                ClearPendingPlans();
                 RaiseCommandStates();
             }
         }
@@ -157,6 +154,7 @@ public sealed class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            ClearPendingPlans();
             _pendingAdoption = await _client.PreviewAdoptionAsync(
                 new EnvironmentFingerprint(
                     SelectedEnvironment.Fingerprint.Value));
@@ -209,6 +207,7 @@ public sealed class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            ClearPendingPlans();
             _pendingSwitch = await _client.PreviewVersionSwitchAsync(
                 new EnvironmentFingerprint(
                     SelectedEnvironment.Fingerprint.Value));
@@ -262,6 +261,16 @@ public sealed class MainViewModel : ObservableObject
     private void HandleException(Exception exception)
     {
         StatusMessage = $"操作失败：{exception.Message}";
+    }
+
+    private void ClearPendingPlans()
+    {
+        _pendingAdoption = null;
+        _pendingSwitch = null;
+        AdoptionImpact = string.Empty;
+        PendingTarget = string.Empty;
+        PendingRecoveryPoint = string.Empty;
+        RaiseCommandStates();
     }
 
 }

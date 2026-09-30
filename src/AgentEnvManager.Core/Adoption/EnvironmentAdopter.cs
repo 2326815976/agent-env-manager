@@ -62,10 +62,20 @@ internal sealed class EnvironmentAdopter(
             target: observed.Asset.Location,
             impact: preview.Impact);
         await operationJournal.SaveAsync(operation, cancellationToken);
+        ValidateAdoption(preview);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkValidated(operation, timeProvider),
+            cancellationToken);
         var recoveryPoint = await recoveryPointStore.CreateAsync(
             preview,
             operation.Id,
             existing,
+            cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPoint.Id,
+                timeProvider),
             cancellationToken);
 
         return preview with
@@ -114,28 +124,13 @@ internal sealed class EnvironmentAdopter(
         EnvironmentManifest? savedManifest = null;
         try
         {
-            ValidateAdoption(preview);
-            operation = await SaveTransitionAsync(
-                OperationStateMachine.MarkValidated(operation, timeProvider),
+            var prepared = await PrepareAdoptionPlanAsync(
+                preview,
+                existing,
+                operation,
                 cancellationToken);
-
-            var recoveryPoint = string.IsNullOrWhiteSpace(
-                preview.RecoveryPointId)
-                ? await recoveryPointStore.CreateAsync(
-                    preview,
-                    operation.Id,
-                    existing,
-                    cancellationToken)
-                : await recoveryPointStore.GetAsync(
-                    preview.RecoveryPointId,
-                    cancellationToken)
-                    ?? throw new InvalidOperationException("纳管恢复点不存在。");
-            operation = await SaveTransitionAsync(
-                OperationStateMachine.MarkRecoveryReady(
-                    operation,
-                    recoveryPoint.Id,
-                    timeProvider),
-                cancellationToken);
+            operation = prepared.Operation;
+            var recoveryPoint = prepared.RecoveryPoint;
 
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginExecution(operation, timeProvider),
@@ -302,6 +297,47 @@ internal sealed class EnvironmentAdopter(
     {
         await operationJournal.SaveAsync(operation, cancellationToken);
         return operation;
+    }
+
+    private async Task<(
+        OperationRecord Operation,
+        AdoptionRecoveryPoint RecoveryPoint)> PrepareAdoptionPlanAsync(
+            AdoptionPreview preview,
+            EnvironmentManifest? existing,
+            OperationRecord operation,
+            CancellationToken cancellationToken)
+    {
+        if (operation.State == OperationState.RecoveryReady
+            && !string.IsNullOrWhiteSpace(preview.RecoveryPointId))
+        {
+            var existingPoint = await recoveryPointStore.GetAsync(
+                preview.RecoveryPointId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("纳管恢复点不存在。");
+            return (operation, existingPoint);
+        }
+
+        if (operation.State != OperationState.Draft)
+        {
+            throw new InvalidOperationException("纳管计划状态无效。");
+        }
+
+        ValidateAdoption(preview);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkValidated(operation, timeProvider),
+            cancellationToken);
+        var recoveryPoint = await recoveryPointStore.CreateAsync(
+            preview,
+            operation.Id,
+            existing,
+            cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPoint.Id,
+                timeProvider),
+            cancellationToken);
+        return (operation, recoveryPoint);
     }
 
     private async Task RestoreManifestAsync(

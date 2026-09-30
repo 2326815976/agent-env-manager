@@ -197,6 +197,13 @@ public sealed class MainViewModelTests
         {
             throw new NotSupportedException();
         }
+
+        public Task<OperationRollbackPlan> PreviewRollbackAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class AdoptingManagerClient(
@@ -298,6 +305,13 @@ public sealed class MainViewModelTests
         }
 
         public Task<OperationRecord> RollbackOperationAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRollbackPlan> PreviewRollbackAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {

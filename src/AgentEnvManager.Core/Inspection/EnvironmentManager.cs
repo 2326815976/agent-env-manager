@@ -137,6 +137,53 @@ public sealed class EnvironmentManager
         return RollbackOperationCoreAsync(operationId, cancellationToken);
     }
 
+    public async Task<OperationRollbackPlan> PreviewRollbackAsync(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        var operation = await FindOperationAsync(
+            operationId,
+            cancellationToken);
+        if (operation.State != OperationState.Failed)
+        {
+            throw new InvalidOperationException(
+                "只有失败操作可以生成回滚计划。");
+        }
+
+        if (string.IsNullOrWhiteSpace(operation.RecoveryPointId)
+            || string.IsNullOrWhiteSpace(operation.Target)
+            || string.IsNullOrWhiteSpace(operation.Impact))
+        {
+            throw new InvalidOperationException(
+                "操作缺少目标、影响范围或恢复点。");
+        }
+
+        if (operation.Type == OperationType.EnvironmentVariables)
+        {
+            var point = await _environmentVariableRecoveryPointStore.GetAsync(
+                operation.RecoveryPointId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("恢复点不存在。");
+            return new OperationRollbackPlan(
+                operation.Id,
+                operation.Target,
+                $"恢复 {point.OriginalValues.Count} 个环境变量原值。",
+                point.Id,
+                "环境变量恢复为操作前值。");
+        }
+
+        var recoveryPoint = await _recoveryPointStore.GetAsync(
+            operation.RecoveryPointId,
+            cancellationToken)
+            ?? throw new InvalidOperationException("恢复点不存在。");
+        return new OperationRollbackPlan(
+            operation.Id,
+            operation.Target,
+            recoveryPoint.Description,
+            recoveryPoint.Id,
+            "环境资产恢复为操作前状态。");
+    }
+
     public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
         CancellationToken cancellationToken = default)
     {

@@ -45,6 +45,7 @@ public sealed class OperationCenterViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedOperation, value))
             {
+                ClearRollbackPlan();
                 RaiseCommandStates();
             }
         }
@@ -127,13 +128,18 @@ public sealed class OperationCenterViewModel : ObservableObject
             throw new InvalidOperationException("所选操作当前不能回滚。");
         }
 
-        _pendingRollbackOperationId = SelectedOperation.Id;
-        RollbackTarget = SelectedOperation.Target;
-        RollbackImpact = SelectedOperation.Impact;
-        RollbackRecoveryPoint = SelectedOperation.RecoveryPointId;
+        return PrepareRollbackCoreAsync(SelectedOperation.Id);
+    }
+
+    private async Task PrepareRollbackCoreAsync(string operationId)
+    {
+        var plan = await _client.PreviewRollbackAsync(operationId);
+        _pendingRollbackOperationId = plan.OperationId;
+        RollbackTarget = plan.Target;
+        RollbackImpact = $"{plan.Impact} 预期结果：{plan.ExpectedResult}";
+        RollbackRecoveryPoint = plan.RecoveryPointId;
         StatusMessage = "回滚计划已生成，请确认目标、影响范围和恢复点。";
         RaiseCommandStates();
-        return Task.CompletedTask;
     }
 
     public async Task RollbackSelectedAsync()
@@ -222,11 +228,9 @@ public sealed class OperationRecordRowViewModel(OperationRecord operation)
 
     public bool CanRollback { get; } =
         !string.IsNullOrWhiteSpace(operation.RecoveryPointId)
-        && operation.State is
-            OperationState.RecoveryReady
-            or OperationState.Executing
-            or OperationState.Verifying
-            or OperationState.Failed;
+        && !string.IsNullOrWhiteSpace(operation.Target)
+        && !string.IsNullOrWhiteSpace(operation.Impact)
+        && operation.State == OperationState.Failed;
 }
 
 public sealed record RecoveryPointRowViewModel(

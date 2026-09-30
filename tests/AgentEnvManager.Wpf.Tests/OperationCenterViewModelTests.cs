@@ -45,14 +45,38 @@ public sealed class OperationCenterViewModelTests
         Assert.Contains("已回滚", viewModel.StatusMessage);
     }
 
+    [Fact]
+    public async Task RefreshAsync_disables_rollback_when_plan_metadata_is_incomplete()
+    {
+        var client = new StubClient();
+        client.Operations =
+        [
+            new OperationRecord(
+                "operation-1",
+                OperationType.Adopt,
+                OperationState.Failed,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch,
+                "缺少元数据的旧操作",
+                "recovery-1")
+        ];
+        var viewModel = new OperationCenterViewModel(client);
+
+        await viewModel.RefreshAsync();
+
+        Assert.False(Assert.Single(viewModel.Operations).CanRollback);
+    }
+
     private sealed class StubClient : IEnvironmentManagerClient
     {
         public string? RolledBackOperationId { get; private set; }
 
+        public IReadOnlyList<OperationRecord>? Operations { get; set; }
+
         public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<OperationRecord>>(
+            return Task.FromResult(Operations ??
             [
                 new OperationRecord(
                     "operation-1",
@@ -113,6 +137,18 @@ public sealed class OperationCenterViewModelTests
                 DateTimeOffset.UnixEpoch,
                 DateTimeOffset.UnixEpoch,
                 "纳管 Node.js"));
+        }
+
+        public Task<OperationRollbackPlan> PreviewRollbackAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new OperationRollbackPlan(
+                operationId,
+                @"D:\Runtimes\node",
+                "恢复纳管前状态。",
+                "recovery-1",
+                "环境资产恢复为操作前状态。"));
         }
 
         public Task<InspectionReport> InspectAsync(

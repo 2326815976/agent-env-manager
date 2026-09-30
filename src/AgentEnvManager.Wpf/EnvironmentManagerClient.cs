@@ -72,4 +72,11 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
     {
         return manager.RollbackOperationAsync(operationId, cancellationToken);
     }
+
+    public Task<OperationRollbackPlan> PreviewRollbackAsync(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewRollbackAsync(operationId, cancellationToken);
+    }
 }

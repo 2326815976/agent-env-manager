@@ -150,6 +150,10 @@
                         <Button Content="确认回滚"
                                 Command="{Binding ConfirmRollbackCommand}"
                                 Padding="14,6" />
+                        <TextBlock Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="#52616B"
+                                   Text="{Binding StatusMessage}" />
                     </StackPanel>
 
                     <DataGrid Grid.Row="1"
