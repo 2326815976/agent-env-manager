@@ -19,7 +19,8 @@ public sealed class EnvironmentManager(
         return new InspectionReport(
             _timeProvider.GetUtcNow(),
             observedEnvironments,
-            FindPathConflicts(probeResult.PathEntries));
+            FindPathConflicts(probeResult.PathEntries),
+            FindCommandPathConflicts(probeResult.Assets));
     }
 
     private static IReadOnlyList<PathConflict> FindPathConflicts(
@@ -27,31 +28,50 @@ public sealed class EnvironmentManager(
     {
         return pathEntries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Value))
-            .GroupBy(entry => NormalizePath(entry.Value), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                entry => WindowsPathNormalizer.NormalizeForComparison(entry.Value),
+                StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() > 1)
             .Select(group => new PathConflict(
-                CleanPathForDisplay(group.First().Value),
+                WindowsPathNormalizer.CleanForDisplay(group.First().Value),
                 group.Count(),
                 group.Select(entry => entry.Scope).Distinct().ToArray()))
             .OrderBy(conflict => conflict.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
-    private static string NormalizePath(string path)
+    private static IReadOnlyList<CommandPathConflict> FindCommandPathConflicts(
+        IEnumerable<EnvironmentAsset> assets)
     {
-        return CleanPathForDisplay(path)
-            .Replace('/', '\\')
-            .ToUpperInvariant();
-    }
+        return assets
+            .Where(asset =>
+                asset.Kind != EnvironmentAssetKind.AgentConfiguration
+                && asset.Source.Kind == DiscoverySource.Path)
+            .GroupBy(
+                asset => (asset.Kind, asset.Name),
+                EqualityComparer<(EnvironmentAssetKind, string)>.Default)
+            .Where(group => group
+                .Select(asset => WindowsPathNormalizer.NormalizeForComparison(asset.Location))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() > 1)
+            .Select(group =>
+            {
+                var ordered = group
+                    .Select((asset, index) => (Asset: asset, Index: index))
+                    .OrderBy(item => item.Asset.ResolutionOrder ?? item.Index)
+                    .ToArray();
 
-    private static string CleanPathForDisplay(string path)
-    {
-        var trimmed = path.Trim();
-        if (trimmed.Length >= 2 && trimmed[0] == '"' && trimmed[^1] == '"')
-        {
-            trimmed = trimmed[1..^1];
-        }
-
-        return trimmed.TrimEnd('\\', '/');
+                return new CommandPathConflict(
+                    group.Key.Item2,
+                    ordered
+                        .Select((item, index) => new CommandPathCandidate(
+                            item.Asset.Location,
+                            index,
+                            Effective: index == 0,
+                            item.Asset.Scopes ?? []))
+                        .ToArray());
+            })
+            .OrderBy(conflict => conflict.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

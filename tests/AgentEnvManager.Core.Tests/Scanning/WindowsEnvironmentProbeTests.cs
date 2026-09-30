@@ -16,20 +16,22 @@ public sealed class WindowsEnvironmentProbeTests
                     "Node.js",
                     @"D:\Software\node\node.exe",
                     IsSystemComponent: false,
-                    Source: "PATH"),
+                    Source: DiscoverySourceInfo.PathCommand),
                 new ExecutableCandidate(
                     EnvironmentAssetKind.Shell,
                     "cmd",
                     @"C:\Windows\System32\cmd.exe",
                     IsSystemComponent: true,
-                    Source: "系统路径")
+                    Source: DiscoverySourceInfo.SystemPath)
             ],
             Directories:
             [
                 new DirectoryCandidate(
                     "Codex",
                     @"E:\Codex\.codex",
-                    Source: "CODEX_HOME")
+                    Source: new DiscoverySourceInfo(
+                        DiscoverySource.AgentConfiguration,
+                        "CODEX_HOME"))
             ],
             PathEntries:
             [

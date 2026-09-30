@@ -12,20 +12,9 @@ public sealed class WindowsEnvironmentProbe(
         cancellationToken.ThrowIfCancellationRequested();
         var snapshot = snapshotSource.Capture();
         var assets = snapshot.Executables
-            .Select(candidate => new EnvironmentAsset(
-                candidate.Kind,
-                candidate.Name,
-                candidate.Version,
-                candidate.Path,
-                candidate.IsSystemComponent,
-                candidate.Source))
-            .Concat(snapshot.Directories.Select(candidate => new EnvironmentAsset(
-                EnvironmentAssetKind.AgentConfiguration,
-                candidate.Name,
-                Version: null,
-                candidate.Path,
-                IsSystemComponent: false,
-                candidate.Source)))
+            .Select(candidate => candidate.ToEnvironmentAsset())
+            .Concat(snapshot.Directories.Select(
+                candidate => candidate.ToEnvironmentAsset()))
             .ToArray();
 
         return Task.FromResult(new EnvironmentProbeResult(

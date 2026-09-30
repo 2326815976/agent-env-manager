@@ -7,13 +7,41 @@ public sealed record ExecutableCandidate(
     string Name,
     string Path,
     bool IsSystemComponent,
-    string Source,
-    string? Version = null);
+    DiscoverySourceInfo Source,
+    string? Version = null,
+    int? ResolutionOrder = null,
+    IReadOnlyList<PathScope>? Scopes = null)
+{
+    public EnvironmentAsset ToEnvironmentAsset()
+    {
+        return new EnvironmentAsset(
+            Kind,
+            Name,
+            Version,
+            Path,
+            IsSystemComponent,
+            Source,
+            ResolutionOrder,
+            Scopes);
+    }
+}
 
 public sealed record DirectoryCandidate(
     string Name,
     string Path,
-    string Source);
+    DiscoverySourceInfo Source)
+{
+    public EnvironmentAsset ToEnvironmentAsset()
+    {
+        return new EnvironmentAsset(
+            EnvironmentAssetKind.AgentConfiguration,
+            Name,
+            Version: null,
+            Path,
+            IsSystemComponent: false,
+            Source);
+    }
+}
 
 public sealed record WindowsEnvironmentSnapshot(
     IReadOnlyList<ExecutableCandidate> Executables,
