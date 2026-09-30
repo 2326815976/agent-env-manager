@@ -1,77 +1,87 @@
+using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Storage;
+
 namespace AgentEnvManager.Core.Inspection;
 
-public sealed class EnvironmentManager(
-    IEnvironmentProbe probe,
-    TimeProvider? timeProvider = null)
+public sealed class EnvironmentManager
 {
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly EnvironmentInspector _inspector;
+    private readonly EnvironmentAdopter _adopter;
 
-    public async Task<InspectionReport> InspectAsync(CancellationToken cancellationToken = default)
+    public EnvironmentManager(
+        IEnvironmentProbe probe,
+        TimeProvider? timeProvider = null,
+        IEnvironmentManifestStore? manifestStore = null,
+        IEnvironmentIndex? index = null,
+        IEnvironmentAssetHasher? assetHasher = null,
+        IEnvironmentRecoveryPointStore? recoveryPointStore = null,
+        IStableActivationPathFactory? activationPathFactory = null)
     {
-        var probeResult = await probe.ProbeAsync(cancellationToken);
-        var observedEnvironments = probeResult.Assets
-            .Select(asset => new ObservedEnvironment(
-                asset,
-                ManagementState.Observed,
-                HealthState.Unknown))
-            .ToArray();
+        var clock = timeProvider ?? TimeProvider.System;
+        var store = manifestStore ?? EmptyManifestStore.Instance;
+        var environmentIndex = index ?? UnavailableEnvironmentIndex.Instance;
+        var hasher = assetHasher ?? new FileSystemEnvironmentAssetHasher();
+        var recoveryStore = recoveryPointStore
+            ?? InMemoryEnvironmentRecoveryPointStore.Instance;
+        var pathFactory = activationPathFactory
+            ?? DefaultStableActivationPathFactory.Instance;
 
-        return new InspectionReport(
-            _timeProvider.GetUtcNow(),
-            observedEnvironments,
-            FindPathConflicts(probeResult.PathEntries),
-            FindCommandPathConflicts(probeResult.Assets));
+        _inspector = new EnvironmentInspector(
+            probe,
+            store,
+            clock);
+        _adopter = new EnvironmentAdopter(
+            _inspector,
+            store,
+            environmentIndex,
+            hasher,
+            recoveryStore,
+            pathFactory,
+            clock);
     }
 
-    private static IReadOnlyList<PathConflict> FindPathConflicts(
-        IEnumerable<PathEntry> pathEntries)
+    public Task<InspectionReport> InspectAsync(
+        CancellationToken cancellationToken = default)
     {
-        return pathEntries
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Value))
-            .GroupBy(
-                entry => WindowsPathNormalizer.NormalizeForComparison(entry.Value),
-                StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() > 1)
-            .Select(group => new PathConflict(
-                WindowsPathNormalizer.CleanForDisplay(group.First().Value),
-                group.Count(),
-                group.Select(entry => entry.Scope).Distinct().ToArray()))
-            .OrderBy(conflict => conflict.Path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return _inspector.InspectAsync(cancellationToken);
     }
 
-    private static IReadOnlyList<CommandPathConflict> FindCommandPathConflicts(
-        IEnumerable<EnvironmentAsset> assets)
+    public Task<AdoptionPreview> PreviewAdoptionAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default)
     {
-        return assets
-            .Where(asset =>
-                asset.Kind != EnvironmentAssetKind.AgentConfiguration
-                && asset.Source.Kind == DiscoverySource.Path)
-            .GroupBy(
-                asset => (asset.Kind, asset.Name),
-                EqualityComparer<(EnvironmentAssetKind, string)>.Default)
-            .Where(group => group
-                .Select(asset => WindowsPathNormalizer.NormalizeForComparison(asset.Location))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count() > 1)
-            .Select(group =>
-            {
-                var ordered = group
-                    .Select((asset, index) => (Asset: asset, Index: index))
-                    .OrderBy(item => item.Asset.ResolutionOrder ?? item.Index)
-                    .ToArray();
+        return _adopter.PreviewAsync(fingerprint, cancellationToken);
+    }
 
-                return new CommandPathConflict(
-                    group.Key.Item2,
-                    ordered
-                        .Select((item, index) => new CommandPathCandidate(
-                            item.Asset.Location,
-                            index,
-                            Effective: index == 0,
-                            item.Asset.Scopes ?? []))
-                        .ToArray());
-            })
-            .OrderBy(conflict => conflict.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+    public Task<ManagedEnvironment> AdoptAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        return _adopter.AdoptAsync(fingerprint, cancellationToken);
+    }
+
+    public Task<ManagedEnvironment> AdoptAsync(
+        AdoptionPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _adopter.AdoptAsync(preview, cancellationToken);
+    }
+
+    public Task<int> RebuildEnvironmentIndexAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _adopter.RebuildIndexAsync(cancellationToken);
+    }
+
+    private sealed class UnavailableEnvironmentIndex : IEnvironmentIndex
+    {
+        public static UnavailableEnvironmentIndex Instance { get; } = new();
+
+        public Task RebuildAsync(
+            IReadOnlyList<EnvironmentManifest> manifests,
+            CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("尚未配置环境索引。");
+        }
     }
 }

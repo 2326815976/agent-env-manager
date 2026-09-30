@@ -1,3 +1,5 @@
+using AgentEnvManager.Core.Adoption;
+
 namespace AgentEnvManager.Core.Inspection;
 
 public enum EnvironmentAssetKind
@@ -10,7 +12,8 @@ public enum EnvironmentAssetKind
 
 public enum ManagementState
 {
-    Observed
+    Observed,
+    Managed
 }
 
 public enum HealthState
@@ -71,8 +74,10 @@ public sealed record EnvironmentAsset(
 
 public sealed record ObservedEnvironment(
     EnvironmentAsset Asset,
+    EnvironmentFingerprint Fingerprint,
     ManagementState ManagementState,
-    HealthState HealthState);
+    HealthState HealthState,
+    EnvironmentIdentity? Identity = null);
 
 public sealed record PathEntry(
     string Value,

@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Scanning;
+using AgentEnvManager.Core.Tests.TestSupport;
 
 namespace AgentEnvManager.Core.Tests.Scanning;
 
@@ -38,7 +39,8 @@ public sealed class WindowsEnvironmentProbeTests
                 new PathEntry(@"D:\Software\node", PathScope.User)
             ]);
         var manager = new EnvironmentManager(
-            new WindowsEnvironmentProbe(new StubSnapshotSource(snapshot)));
+            new WindowsEnvironmentProbe(new StubSnapshotSource(snapshot)),
+            assetHasher: new FixedAssetHasher("asset-hash"));
 
         var report = await manager.InspectAsync();
 

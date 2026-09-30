@@ -1,5 +1,7 @@
+using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Scanning;
+using AgentEnvManager.Core.Storage;
 
 namespace AgentEnvManager.Cli;
 
@@ -13,27 +15,68 @@ public static class CliApplication
 
         if (request.Action == CliAction.Help)
         {
-            InspectionReportRenderer.WriteUsage(Console.Out);
+            CliMessages.WriteUsage(Console.Out);
             return 0;
         }
 
         if (request.Action == CliAction.Unknown)
         {
             Console.Error.WriteLine($"未知命令: {request.UnknownCommand}");
-            InspectionReportRenderer.WriteUsage(Console.Error);
+            CliMessages.WriteUsage(Console.Error);
             return 2;
         }
 
         var manager = CreateEnvironmentManager();
-        var report = await manager.InspectAsync(cancellationToken);
-        InspectionReportRenderer.Write(report, Console.Out);
-        return 0;
+
+        switch (request.Action)
+        {
+            case CliAction.Inspect:
+                var report = await manager.InspectAsync(cancellationToken);
+                InspectionReportRenderer.Write(report, Console.Out);
+                return 0;
+
+            case CliAction.PreviewAdoption:
+                var preview = await manager.PreviewAdoptionAsync(
+                    new EnvironmentFingerprint(request.Fingerprint!),
+                    cancellationToken);
+                AdoptionReportRenderer.Write(preview, Console.Out);
+                return 0;
+
+            case CliAction.Adopt:
+                var fingerprint = new EnvironmentFingerprint(
+                    request.Fingerprint!);
+                var adoptionPreview = await manager.PreviewAdoptionAsync(
+                    fingerprint,
+                    cancellationToken);
+                AdoptionReportRenderer.Write(adoptionPreview, Console.Out);
+                var managed = await manager.AdoptAsync(
+                    adoptionPreview,
+                    cancellationToken);
+                AdoptionReportRenderer.Write(managed, Console.Out);
+                return 0;
+
+            case CliAction.RebuildIndex:
+                var count = await manager.RebuildEnvironmentIndexAsync(
+                    cancellationToken);
+                CliMessages.WriteIndexRebuild(count, Console.Out);
+                return 0;
+
+            default:
+                throw new InvalidOperationException("未知 CLI 操作。");
+        }
     }
 
     private static EnvironmentManager CreateEnvironmentManager()
     {
+        var paths = ManagerPaths.Resolve(
+            Environment.GetEnvironmentVariable("AGENT_ENV_MANAGER_HOME"));
         return new EnvironmentManager(
             new WindowsEnvironmentProbe(
-                new WindowsEnvironmentSnapshotSource()));
+                new WindowsEnvironmentSnapshotSource()),
+            manifestStore: new FileEnvironmentManifestStore(
+                paths.ManifestDirectory),
+            index: new SqliteEnvironmentIndex(paths.DatabasePath),
+            recoveryPointStore: new FileEnvironmentRecoveryPointStore(
+                paths.RecoveryDirectory));
     }
 }

@@ -1,0 +1,83 @@
+using AgentEnvManager.Core.Inspection;
+
+namespace AgentEnvManager.Core.Adoption;
+
+public sealed record EnvironmentIdentity(string Value);
+
+public sealed record EnvironmentFingerprint(string Value);
+
+public sealed record EnvironmentManifest(
+    EnvironmentIdentity Identity,
+    EnvironmentFingerprint Fingerprint,
+    EnvironmentAssetKind Kind,
+    string Name,
+    string? Version,
+    DiscoverySourceInfo Source,
+    string Location,
+    string StableActivationPath,
+    string AssetHash,
+    string RecoveryPointId,
+    bool IsSystemComponent,
+    DateTimeOffset AdoptedAtUtc);
+
+public sealed record AdoptionRecoveryPoint(
+    string Id,
+    EnvironmentFingerprint Fingerprint,
+    EnvironmentIdentity? PreviousIdentity,
+    string Description,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record AdoptionPreview(
+    EnvironmentFingerprint Fingerprint,
+    EnvironmentIdentity ProposedIdentity,
+    EnvironmentAsset Asset,
+    string AssetHash,
+    string StableActivationPath,
+    string Impact,
+    bool IsAlreadyManaged,
+    EnvironmentIdentity? ExistingIdentity);
+
+public sealed record ManagedEnvironment(
+    EnvironmentIdentity Identity,
+    EnvironmentManifest Manifest);
+
+public interface IEnvironmentManifestStore
+{
+    Task<IReadOnlyList<EnvironmentManifest>> ReadAllAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<EnvironmentManifest?> FindByFingerprintAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default);
+
+    Task<EnvironmentManifest> SaveAsync(
+        EnvironmentManifest manifest,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IEnvironmentIndex
+{
+    Task RebuildAsync(
+        IReadOnlyList<EnvironmentManifest> manifests,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IEnvironmentAssetHasher
+{
+    Task<string> ComputeHashAsync(
+        EnvironmentAsset asset,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IStableActivationPathFactory
+{
+    string Create(EnvironmentIdentity identity);
+}
+
+public interface IEnvironmentRecoveryPointStore
+{
+    Task<AdoptionRecoveryPoint> CreateAsync(
+        AdoptionPreview preview,
+        EnvironmentManifest? existingManifest,
+        CancellationToken cancellationToken = default);
+}

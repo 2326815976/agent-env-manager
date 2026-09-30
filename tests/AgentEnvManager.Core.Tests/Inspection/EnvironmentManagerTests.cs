@@ -1,4 +1,5 @@
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Tests.TestSupport;
 
 namespace AgentEnvManager.Core.Tests.Inspection;
 
@@ -18,7 +19,10 @@ public sealed class EnvironmentManagerTests
             new EnvironmentProbeResult([asset], []));
         var clock = new FixedTimeProvider(
             new DateTimeOffset(2026, 9, 30, 4, 0, 0, TimeSpan.Zero));
-        var manager = new EnvironmentManager(probe, clock);
+        var manager = new EnvironmentManager(
+            probe,
+            clock,
+            assetHasher: new FixedAssetHasher("asset-hash"));
 
         var report = await manager.InspectAsync();
 
@@ -42,7 +46,9 @@ public sealed class EnvironmentManagerTests
                     new PathEntry("C:/Tools/Bin", PathScope.Process),
                     new PathEntry(@"C:\Unique", PathScope.User)
                 ]));
-        var manager = new EnvironmentManager(probe);
+        var manager = new EnvironmentManager(
+            probe,
+            assetHasher: new FixedAssetHasher("asset-hash"));
 
         var report = await manager.InspectAsync();
 
@@ -78,7 +84,9 @@ public sealed class EnvironmentManagerTests
                         ResolutionOrder: 1)
                 ],
                 []));
-        var manager = new EnvironmentManager(probe);
+        var manager = new EnvironmentManager(
+            probe,
+            assetHasher: new FixedAssetHasher("asset-hash"));
 
         var report = await manager.InspectAsync();
 
@@ -110,7 +118,9 @@ public sealed class EnvironmentManagerTests
                     new PathEntry(@"C:\", PathScope.User),
                     new PathEntry("C:/", PathScope.Machine)
                 ]));
-        var manager = new EnvironmentManager(probe);
+        var manager = new EnvironmentManager(
+            probe,
+            assetHasher: new FixedAssetHasher("asset-hash"));
 
         var report = await manager.InspectAsync();
 

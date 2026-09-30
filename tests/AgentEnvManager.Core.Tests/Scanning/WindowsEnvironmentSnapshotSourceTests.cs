@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Scanning;
+using AgentEnvManager.Core.Tests.TestSupport;
 
 namespace AgentEnvManager.Core.Tests.Scanning;
 
@@ -121,7 +122,8 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     {
         var manager = new EnvironmentManager(
             new WindowsEnvironmentProbe(
-                new WindowsEnvironmentSnapshotSource(accessor)));
+                new WindowsEnvironmentSnapshotSource(accessor)),
+            assetHasher: new FixedAssetHasher("asset-hash"));
         return await manager.InspectAsync();
     }
 

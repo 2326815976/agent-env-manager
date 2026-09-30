@@ -8,18 +8,6 @@ internal static class InspectionReportRenderer
         InspectionReport report,
         TextWriter output)
     {
-        WriteHumanReadable(report, output);
-    }
-
-    public static void WriteUsage(TextWriter output)
-    {
-        output.WriteLine("用法: agent-env-manager inspect");
-    }
-
-    private static void WriteHumanReadable(
-        InspectionReport report,
-        TextWriter output)
-    {
         output.WriteLine("Agent 环境体检");
         output.WriteLine($"生成时间: {report.GeneratedAtUtc:O}");
         output.WriteLine(
@@ -32,8 +20,12 @@ internal static class InspectionReportRenderer
                 ? string.Empty
                 : $" {environment.Asset.Version}";
             var system = environment.Asset.IsSystemComponent ? " [系统组件]" : string.Empty;
+            var state = environment.ManagementState == ManagementState.Managed
+                ? " [已纳管]"
+                : string.Empty;
             output.WriteLine(
-                $"- [{FormatKind(environment.Asset.Kind)}] {environment.Asset.Name}{version}{system}");
+                $"- [{FormatKind(environment.Asset.Kind)}] {environment.Asset.Name}{version}{system}{state}");
+            output.WriteLine($"  指纹: {environment.Fingerprint.Value}");
             output.WriteLine($"  位置: {environment.Asset.Location}");
             output.WriteLine($"  来源: {environment.Asset.Source.Description}");
         }
