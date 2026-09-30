@@ -195,6 +195,7 @@ public sealed class OperationRecordRowViewModel(OperationRecord operation)
         OperationType.Adopt => "纳管",
         OperationType.Switch => "版本切换",
         OperationType.EnvironmentVariables => "环境变量事务",
+        OperationType.AgentBinding => "Agent 绑定",
         _ => operation.Type.ToString()
     };
 

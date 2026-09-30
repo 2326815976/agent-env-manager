@@ -1,4 +1,5 @@
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Scanning;
 
@@ -28,6 +29,13 @@ public static class EnvironmentManagerFactory
                     paths.EnvironmentVariableRecoveryDirectory),
             operationJournal: new FileOperationJournal(
                 paths.OperationDirectory),
-            managerPaths: paths);
+            managerPaths: paths,
+            agentAdapters:
+            [
+                new CodexAgentAdapter(
+                    new SystemAgentProcessRunner(),
+                    new FileAgentConfigurationBackupStore(
+                        paths.AgentBackupDirectory))
+            ]);
     }
 }

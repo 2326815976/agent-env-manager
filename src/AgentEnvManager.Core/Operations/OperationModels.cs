@@ -4,7 +4,8 @@ public enum OperationType
 {
     Adopt,
     Switch,
-    EnvironmentVariables
+    EnvironmentVariables,
+    AgentBinding
 }
 
 public enum OperationState

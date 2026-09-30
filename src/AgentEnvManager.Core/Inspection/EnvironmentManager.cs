@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
@@ -12,10 +13,13 @@ public sealed class EnvironmentManager
     private readonly EnvironmentAdopter _adopter;
     private readonly VersionSwitcher _switcher;
     private readonly IOperationJournal _operationJournal;
+    private readonly IEnvironmentManifestStore _manifestStore;
     private readonly EnvironmentVariableService _environmentVariables;
     private readonly IEnvironmentRecoveryPointStore _recoveryPointStore;
     private readonly IEnvironmentVariableRecoveryPointStore
         _environmentVariableRecoveryPointStore;
+    private readonly IReadOnlyDictionary<string, IAgentAdapter>
+        _agentAdapters;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -31,7 +35,8 @@ public sealed class EnvironmentManager
         IUserEnvironmentVariableStore? userEnvironmentVariableStore = null,
         IEnvironmentVariableRecoveryPointStore?
             environmentVariableRecoveryPointStore = null,
-        ManagerPaths? managerPaths = null)
+        ManagerPaths? managerPaths = null,
+        IEnumerable<IAgentAdapter>? agentAdapters = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -47,6 +52,11 @@ public sealed class EnvironmentManager
         var link = activationLink ?? new WindowsJunctionActivationLink();
         var runtimeHealthCheck = healthCheck ?? new ProcessRuntimeHealthCheck();
         _operationJournal = journal;
+        _manifestStore = store;
+        _agentAdapters = (agentAdapters ?? [])
+            .ToDictionary(
+                adapter => adapter.Name,
+                StringComparer.OrdinalIgnoreCase);
         _recoveryPointStore = recoveryStore;
         _environmentVariableRecoveryPointStore =
             environmentVariableRecoveryPointStore
@@ -238,6 +248,60 @@ public sealed class EnvironmentManager
             cancellationToken);
     }
 
+    public Task<AgentDiscoveryResult> DiscoverAgentAsync(
+        string agentName,
+        AgentDiscoveryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return GetAgentAdapter(agentName).DiscoverAsync(
+            request,
+            cancellationToken);
+    }
+
+    public Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
+        string agentName,
+        AgentBindingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return GetAgentAdapter(agentName).CreatePlanAsync(
+            request,
+            cancellationToken);
+    }
+
+    public async Task<AgentBinding> BindAgentAsync(
+        string agentName,
+        AgentBindingPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        var manifests = await _manifestStore.ReadAllAsync(cancellationToken);
+        var managedEntry = Path.GetFullPath(plan.ManagedEntryPath);
+        if (!manifests.Any(manifest =>
+                !string.IsNullOrWhiteSpace(manifest.ManagedEntryPath)
+                && string.Equals(
+                    Path.GetFullPath(manifest.ManagedEntryPath),
+                    managedEntry,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                "Agent 绑定只能使用已纳管环境的受管入口。");
+        }
+
+        return await new AgentBindingManager(
+                GetAgentAdapter(agentName),
+                _operationJournal)
+            .BindAsync(plan, cancellationToken);
+    }
+
+    public Task RollbackAgentBindingAsync(
+        string agentName,
+        AgentBinding binding,
+        CancellationToken cancellationToken = default)
+    {
+        return GetAgentAdapter(agentName).RollbackAsync(
+            binding,
+            cancellationToken);
+    }
+
     private async Task<OperationRecord> RollbackOperationCoreAsync(
         string operationId,
         CancellationToken cancellationToken)
@@ -268,5 +332,13 @@ public sealed class EnvironmentManager
             operationId,
             cancellationToken)
             ?? throw new KeyNotFoundException("未找到操作记录。");
+    }
+
+    private IAgentAdapter GetAgentAdapter(string agentName)
+    {
+        return _agentAdapters.TryGetValue(agentName, out var adapter)
+            ? adapter
+            : throw new KeyNotFoundException(
+                $"未注册 Agent 适配器: {agentName}");
     }
 }
