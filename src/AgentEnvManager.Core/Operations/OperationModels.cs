@@ -3,7 +3,8 @@ namespace AgentEnvManager.Core.Operations;
 public enum OperationType
 {
     Adopt,
-    Switch
+    Switch,
+    EnvironmentVariables
 }
 
 public enum OperationState

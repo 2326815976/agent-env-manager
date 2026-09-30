@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
 
@@ -11,6 +12,7 @@ public sealed class EnvironmentManager
     private readonly EnvironmentAdopter _adopter;
     private readonly VersionSwitcher _switcher;
     private readonly IOperationJournal _operationJournal;
+    private readonly EnvironmentVariableService _environmentVariables;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -22,7 +24,11 @@ public sealed class EnvironmentManager
         IOperationJournal? operationJournal = null,
         IStableActivationPathFactory? activationPathFactory = null,
         IEnvironmentActivationLink? activationLink = null,
-        IRuntimeHealthCheck? healthCheck = null)
+        IRuntimeHealthCheck? healthCheck = null,
+        IUserEnvironmentVariableStore? userEnvironmentVariableStore = null,
+        IEnvironmentVariableRecoveryPointStore?
+            environmentVariableRecoveryPointStore = null,
+        ManagerPaths? managerPaths = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -31,11 +37,22 @@ public sealed class EnvironmentManager
         var recoveryStore = recoveryPointStore
             ?? InMemoryEnvironmentRecoveryPointStore.Instance;
         var journal = operationJournal ?? new InMemoryOperationJournal();
+        var resolvedManagerPaths = managerPaths ?? ManagerPaths.Resolve();
         var pathFactory = activationPathFactory
-            ?? DefaultStableActivationPathFactory.Instance;
+            ?? new DefaultStableActivationPathFactory(
+                resolvedManagerPaths.StateRoot);
         var link = activationLink ?? new WindowsJunctionActivationLink();
         var runtimeHealthCheck = healthCheck ?? new ProcessRuntimeHealthCheck();
         _operationJournal = journal;
+        _environmentVariables = new EnvironmentVariableService(
+            userEnvironmentVariableStore
+                ?? new WindowsUserEnvironmentVariableStore(),
+            resolvedManagerPaths.ShimDirectory,
+            environmentVariableRecoveryPointStore
+                ?? new InMemoryEnvironmentVariableRecoveryPointStore(),
+            store,
+            journal,
+            clock);
 
         _inspector = new EnvironmentInspector(
             probe,
@@ -114,6 +131,39 @@ public sealed class EnvironmentManager
         return RollbackOperationCoreAsync(operationId, cancellationToken);
     }
 
+    public VersionResolutionResult ResolveRuntimeVersion(
+        VersionResolutionRequest request)
+    {
+        return VersionResolver.Resolve(request);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview> PreviewManagedPathUpdateAsync(
+        IReadOnlyList<string> managedEntries,
+        CancellationToken cancellationToken = default)
+    {
+        return _environmentVariables.PreviewManagedPathUpdateAsync(
+            managedEntries,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview> PreviewManagedVariableUpdateAsync(
+        IReadOnlyList<EnvironmentVariableChange> changes,
+        CancellationToken cancellationToken = default)
+    {
+        return _environmentVariables.PreviewManagedVariablesAsync(
+            changes,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableTransactionResult> ApplyEnvironmentVariableUpdateAsync(
+        EnvironmentVariableUpdatePreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _environmentVariables.ApplyAsync(
+            preview,
+            cancellationToken);
+    }
+
     private async Task<OperationRecord> RollbackOperationCoreAsync(
         string operationId,
         CancellationToken cancellationToken)
@@ -121,11 +171,19 @@ public sealed class EnvironmentManager
         var operation = await FindOperationAsync(
             operationId,
             cancellationToken);
-        return operation.Type == OperationType.Switch
-            ? await _switcher.RollbackAsync(operationId, cancellationToken)
-            : await _adopter.RollbackOperationAsync(
+        return operation.Type switch
+        {
+            OperationType.Switch => await _switcher.RollbackAsync(
                 operationId,
-                cancellationToken);
+                cancellationToken),
+            OperationType.EnvironmentVariables =>
+                await _environmentVariables.RollbackAsync(
+                    operationId,
+                    cancellationToken),
+            _ => await _adopter.RollbackOperationAsync(
+                operationId,
+                cancellationToken)
+        };
     }
 
     private async Task<OperationRecord> FindOperationAsync(
