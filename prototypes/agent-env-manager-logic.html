@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent 环境管理器逻辑原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --text: #182126;
+      --muted: #657078;
+      --border: #d9e0e3;
+      --accent: #0f766e;
+      --accent-soft: #e4f3f0;
+      --danger: #b42318;
+      --danger-soft: #fce8e6;
+      --warning: #9a6700;
+      --warning-soft: #fff4d6;
+      --success: #067647;
+      --success-soft: #e5f6ed;
+      --shadow: 0 12px 30px rgba(24, 33, 38, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    button,
+    select {
+      font: inherit;
+    }
+
+    button {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    button.primary:hover {
+      background: #0b625c;
+      color: #ffffff;
+    }
+
+    button.danger {
+      border-color: #efb4af;
+      color: var(--danger);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    select {
+      min-height: 36px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .page {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .hero {
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    .lead {
+      max-width: 900px;
+      margin: 10px 0 0;
+      color: var(--muted);
+    }
+
+    .prototype-flag {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: var(--warning-soft);
+      color: var(--warning);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-header h2,
+    .panel-header h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.info {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .badge.good {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .badge.warn {
+      background: var(--warning-soft);
+      color: var(--warning);
+    }
+
+    .badge.bad {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #fbfcfc;
+    }
+
+    .field-label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .field-value {
+      display: block;
+      margin-top: 3px;
+      word-break: break-word;
+    }
+
+    .action-groups {
+      display: grid;
+      gap: 14px;
+    }
+
+    .action-group h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .inline-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .path {
+      max-width: 360px;
+      word-break: break-all;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .event-list,
+    .recovery-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .event-list li,
+    .recovery-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .event-list li:last-child,
+    .recovery-list li:last-child {
+      border-bottom: 0;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      white-space: nowrap;
+      border-color: transparent;
+      background: transparent;
+    }
+
+    .tab.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .scenario-description {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+
+    .step-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: steps;
+    }
+
+    .step-list li {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      counter-increment: steps;
+    }
+
+    .step-list li::before {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      content: counter(steps);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .step-button {
+      width: 100%;
+      text-align: left;
+    }
+
+    .step-button.done {
+      border-color: #a8d8c8;
+      background: var(--success-soft);
+      color: var(--success);
+    }
+
+    .note {
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent);
+      background: var(--accent-soft);
+      color: #115e59;
+    }
+
+    .error {
+      padding: 10px 12px;
+      border-left: 3px solid var(--danger);
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        width: min(100% - 20px, 1280px);
+        padding-top: 18px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      th:nth-child(5),
+      td:nth-child(5) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">一次性逻辑原型</p>
+      <h1>Agent 环境管理器是否能安全完成扫描、纳管、切换、迁移和回滚？</h1>
+      <p class="lead">
+        这个原型用内存状态验证同一套计划式状态机，是否足以表达不同运行时的操作边界、
+        健康检查失败和非法操作。它不会修改真实环境。
+      </p>
+      <span class="prototype-flag">原型仅供决策，不是生产实现</span>
+    </header>
+
+    <div class="layout">
+      <div class="stack">
+        <section class="panel" aria-labelledby="state-title">
+          <div class="panel-header">
+            <h2 id="state-title">当前状态</h2>
+            <span id="change-badge" class="badge info">等待操作</span>
+          </div>
+          <div class="panel-body">
+            <div class="grid-2">
+              <div class="field">
+                <span class="field-label">环境清单</span>
+                <span id="inventory-summary" class="field-value">尚未扫描</span>
+              </div>
+              <div class="field">
+                <span class="field-label">当前操作</span>
+                <span id="operation-summary" class="field-value">无</span>
+              </div>
+            </div>
+            <div id="error-panel" class="error" hidden></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="runtimes-title">
+          <div class="panel-header">
+            <h2 id="runtimes-title">工具运行时与 Shell</h2>
+          </div>
+          <div class="panel-body">
+            <div id="runtimes-table"></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="activation-title">
+          <div class="panel-header">
+            <h3 id="activation-title">当前激活</h3>
+          </div>
+          <div class="panel-body">
+            <div id="activation-table"></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="operation-title">
+          <div class="panel-header">
+            <h3 id="operation-title">操作详情</h3>
+          </div>
+          <div class="panel-body">
+            <div id="operation-detail" class="empty">尚未创建操作。</div>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="panel" aria-labelledby="freeplay-title">
+          <div class="panel-header">
+            <h2 id="freeplay-title">自由操作</h2>
+          </div>
+          <div class="panel-body">
+            <div class="action-groups">
+              <div class="action-group">
+                <h3>1. 发现与纳管</h3>
+                <div class="button-row">
+                  <button id="scan-button" class="primary">扫描本机环境</button>
+                </div>
+              </div>
+
+              <div class="action-group">
+                <h3>2. 选择对象</h3>
+                <div class="inline-controls">
+                  <select id="runtime-select" aria-label="选择环境"></select>
+                  <button id="adopt-button">纳管所选环境</button>
+                </div>
+              </div>
+
+              <div class="action-group">
+                <h3>3. 创建计划</h3>
+                <div class="button-row">
+                  <button id="plan-switch-button">计划切换版本</button>
+                  <button id="plan-migrate-button">计划迁移位置</button>
+                  <button id="plan-delete-button" class="danger">计划隔离删除</button>
+                </div>
+              </div>
+
+              <div class="action-group">
+                <h3>4. 执行生命周期</h3>
+                <div class="button-row">
+                  <button id="validate-button">校验计划</button>
+                  <button id="recovery-button">创建恢复点</button>
+                  <button id="execute-button">执行操作</button>
+                  <button id="verify-button">运行健康检查</button>
+                  <button id="complete-button">完成操作</button>
+                  <button id="rollback-button" class="danger">回滚操作</button>
+                  <button id="clear-button">关闭操作记录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="walkthrough-title">
+          <div class="panel-header">
+            <h2 id="walkthrough-title">引导场景</h2>
+          </div>
+          <div id="tabs" class="tabs" role="tablist"></div>
+          <div class="panel-body">
+            <p id="scenario-description" class="scenario-description"></p>
+            <ol id="scenario-steps" class="step-list"></ol>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="recovery-title">
+          <div class="panel-header">
+            <h3 id="recovery-title">恢复点</h3>
+          </div>
+          <div class="panel-body">
+            <ul id="recovery-list" class="recovery-list"></ul>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="events-title">
+          <div class="panel-header">
+            <h3 id="events-title">操作记录</h3>
+          </div>
+          <div class="panel-body">
+            <ul id="event-list" class="event-list"></ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const EnvModel = (() => {
+      const catalog = [
+        {
+          id: "python-3.11",
+          kind: "Python",
+          version: "3.11.13",
+          path: "C:/Users/Lumos/AppData/Roaming/uv/python/cpython-3.11.13",
+          volume: "C",
+          health: "healthy",
+          systemComponent: false
+        },
+        {
+          id: "python-3.12",
+          kind: "Python",
+          version: "3.12.7",
+          path: "D:/Software/Code/Python/Python3.12",
+          volume: "D",
+          health: "healthy",
+          systemComponent: false
+        },
+        {
+          id: "node-22",
+          kind: "Node.js",
+          version: "22.22.0",
+          path: "D:/Software/Code/Node-22.22.0/PFiles64/nodejs",
+          volume: "D",
+          health: "healthy",
+          systemComponent: false
+        },
+        {
+          id: "node-20",
+          kind: "Node.js",
+          version: "20.18.0",
+          path: "D:/Software/Code/Node-20.18.0",
+          volume: "D",
+          health: "degraded",
+          systemComponent: false
+        },
+        {
+          id: "git-2.50",
+          kind: "Git",
+          version: "2.50.1",
+          path: "D:/Software/Code/Git",
+          volume: "D",
+          health: "healthy",
+          systemComponent: false
+        },
+        {
+          id: "powershell-7.5",
+          kind: "PowerShell 7",
+          version: "7.5.3",
+          path: "C:/Program Files/PowerShell/7",
+          volume: "C",
+          health: "healthy",
+          systemComponent: false
+        },
+        {
+          id: "system-cmd",
+          kind: "System Shell",
+          version: "Windows",
+          path: "C:/Windows/System32/cmd.exe",
+          volume: "C",
+          health: "healthy",
+          systemComponent: true
+        }
+      ];
+
+      const terminalStatuses = new Set(["succeeded", "failed", "rolled_back"]);
+
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function initialState() {
+        return {
+          inventoryLoaded: false,
+          runtimes: [],
+          activation: {
+            Python: "python-3.11",
+            "Node.js": "node-22",
+            Git: "git-2.50",
+            "PowerShell 7": "powershell-7.5",
+            "System Shell": "system-cmd"
+          },
+          recoveryPoints: [],
+          operation: null,
+          events: ["等待开始扫描。"],
+          lastError: ""
+        };
+      }
+
+      function addEvent(state, message) {
+        state.events.unshift(message);
+      }
+
+      function fail(state, message) {
+        state.lastError = message;
+        addEvent(state, `已拒绝：${message}`);
+        return state;
+      }
+
+      function runtimeById(state, runtimeId) {
+        return state.runtimes.find((item) => item.id === runtimeId);
+      }
+
+      function ensureNoOpenOperation(state) {
+        if (state.operation && !terminalStatuses.has(state.operation.status)) {
+          state.lastError = "已有未结束操作，请先完成或回滚当前操作。";
+          addEvent(state, `已拒绝：${state.lastError}`);
+          return false;
+        }
+        return true;
+      }
+
+      function createOperation(type, runtime, extra) {
+        return {
+          id: `op-${Date.now()}-${runtime.id}`,
+          type,
+          status: "draft",
+          runtimeId: runtime.id,
+          runtimeLabel: `${runtime.kind} ${runtime.version}`,
+          targetPath: extra && extra.targetPath ? extra.targetPath : "",
+          previousRuntimeId: extra && extra.previousRuntimeId ? extra.previousRuntimeId : "",
+          previousPath: runtime.path,
+          previousVolume: runtime.volume,
+          previousManagement: runtime.management,
+          verificationPassed: false,
+          message: "计划已创建，等待校验。"
+        };
+      }
+
+      function applyOperation(state) {
+        const operation = state.operation;
+        const runtime = runtimeById(state, operation.runtimeId);
+
+        if (!runtime) {
+          operation.status = "failed";
+          operation.message = "目标环境已不存在。";
+          return state;
+        }
+
+        if (operation.type === "switch") {
+          state.activation[runtime.kind] = runtime.id;
+          operation.message = `执行中：${runtime.kind} 已指向 ${runtime.version}。`;
+        }
+
+        if (operation.type === "migrate") {
+          runtime.path = operation.targetPath;
+          runtime.volume = operation.targetPath.slice(0, 1).toUpperCase();
+          operation.message = `执行中：${runtime.kind} 已移动到 ${operation.targetPath}。`;
+        }
+
+        if (operation.type === "delete") {
+          runtime.management = "quarantined";
+          operation.message = `执行中：${runtime.kind} ${runtime.version} 已进入隔离区。`;
+        }
+
+        operation.status = "executing";
+        addEvent(state, `执行操作：${operation.runtimeLabel}。`);
+        return state;
+      }
+
+      function reducer(currentState, action) {
+        const state = clone(currentState);
+        state.lastError = "";
+
+        if (action.type === "RESET") {
+          return initialState();
+        }
+
+        if (action.type === "SCAN") {
+          if (!ensureNoOpenOperation(state)) {
+            return state;
+          }
+          state.inventoryLoaded = true;
+          state.runtimes = clone(catalog).map((runtime) => ({
+            ...runtime,
+            management: "observed"
+          }));
+          addEvent(state, `扫描完成：发现 ${state.runtimes.length} 个环境对象，全部为仅观测状态。`);
+          return state;
+        }
+
+        if (action.type === "ADOPT") {
+          if (!ensureNoOpenOperation(state)) {
+            return state;
+          }
+          const runtime = runtimeById(state, action.runtimeId);
+          if (!runtime) {
+            return fail(state, "所选环境不存在。");
+          }
+          if (runtime.management !== "observed") {
+            return fail(state, "只有仅观测环境可以纳管。");
+          }
+          runtime.management = "managed";
+          addEvent(state, `已纳管：${runtime.kind} ${runtime.version}。`);
+          return state;
+        }
+
+        if (action.type === "PLAN_SWITCH") {
+          if (!ensureNoOpenOperation(state)) {
+            return state;
+          }
+          const runtime = runtimeById(state, action.runtimeId);
+          if (!runtime) {
+            return fail(state, "所选环境不存在。");
+          }
+          if (runtime.management !== "managed") {
+            return fail(state, "只能切换到已纳管环境。");
+          }
+          if (state.activation[runtime.kind] === runtime.id) {
+            return fail(state, "该版本已经是当前激活版本。");
+          }
+          state.operation = createOperation("switch", runtime, {
+            previousRuntimeId: state.activation[runtime.kind]
+          });
+          addEvent(state, `已创建切换计划：${runtime.kind} ${runtime.version}。`);
+          return state;
+        }
+
+        if (action.type === "PLAN_MIGRATE") {
+          if (!ensureNoOpenOperation(state)) {
+            return state;
+          }
+          const runtime = runtimeById(state, action.runtimeId);
+          if (!runtime) {
+            return fail(state, "所选环境不存在。");
+          }
+          if (runtime.systemComponent) {
+            return fail(state, "系统 Shell 不能迁移。");
+          }
+          if (runtime.management !== "managed") {
+            return fail(state, "只能迁移已纳管环境。");
+          }
+          state.operation = createOperation("migrate", runtime, {
+            targetPath: action.targetPath
+          });
+          addEvent(state, `已创建迁移计划：${runtime.kind} ${runtime.version}。`);
+          return state;
+        }
+
+        if (action.type === "PLAN_DELETE") {
+          if (!ensureNoOpenOperation(state)) {
+            return state;
+          }
+          const runtime = runtimeById(state, action.runtimeId);
+          if (!runtime) {
+            return fail(state, "所选环境不存在。");
+          }
+          if (runtime.systemComponent) {
+            return fail(state, "系统 Shell 不能删除。");
+          }
+          if (runtime.management !== "managed") {
+            return fail(state, "只能删除已纳管环境。");
+          }
+          if (state.activation[runtime.kind] === runtime.id) {
+            return fail(state, "当前激活版本不能直接删除，请先切换到替代版本。");
+          }
+          state.operation = createOperation("delete", runtime);
+          addEvent(state, `已创建隔离删除计划：${runtime.kind} ${runtime.version}。`);
+          return state;
+        }
+
+        if (action.type === "VALIDATE_PLAN") {
+          if (!state.operation) {
+            return fail(state, "没有可校验的计划。");
+          }
+          if (state.operation.status !== "draft") {
+            return fail(state, "只有草稿计划可以校验。");
+          }
+          if (state.operation.type === "migrate" && !state.operation.targetPath) {
+            state.operation.status = "failed";
+            state.operation.message = "迁移目标路径为空。";
+            addEvent(state, "校验失败：迁移目标路径为空。");
+            return state;
+          }
+          state.operation.status = "validated";
+          state.operation.message = "计划校验通过，等待创建恢复点。";
+          addEvent(state, `计划校验通过：${state.operation.runtimeLabel}。`);
+          return state;
+        }
+
+        if (action.type === "CREATE_RECOVERY") {
+          if (!state.operation) {
+            return fail(state, "没有可创建恢复点的计划。");
+          }
+          if (state.operation.status !== "validated") {
+            return fail(state, "计划校验通过后才能创建恢复点。");
+          }
+          const point = {
+            id: `rp-${state.recoveryPoints.length + 1}`,
+            operationType: state.operation.type,
+            runtimeLabel: state.operation.runtimeLabel,
+            previousRuntimeId: state.operation.previousRuntimeId,
+            previousPath: state.operation.previousPath,
+            previousVolume: state.operation.previousVolume,
+            previousManagement: state.operation.previousManagement
+          };
+          state.recoveryPoints.unshift(point);
+          state.operation.status = "recovery_ready";
+          state.operation.message = `恢复点 ${point.id} 已创建，可以执行。`;
+          addEvent(state, `恢复点已创建：${point.id}。`);
+          return state;
+        }
+
+        if (action.type === "EXECUTE") {
+          if (!state.operation) {
+            return fail(state, "没有可执行的计划。");
+          }
+          if (state.operation.status !== "recovery_ready") {
+            return fail(state, "必须通过校验并创建恢复点后才能执行。");
+          }
+          return applyOperation(state);
+        }
+
+        if (action.type === "VERIFY") {
+          if (!state.operation) {
+            return fail(state, "没有可验证的操作。");
+          }
+          if (state.operation.status !== "executing") {
+            return fail(state, "只有执行中的操作可以运行健康检查。");
+          }
+          const runtime = runtimeById(state, state.operation.runtimeId);
+          if (!runtime) {
+            state.operation.status = "failed";
+            state.operation.message = "健康检查失败：目标环境不存在。";
+            addEvent(state, "健康检查失败：目标环境不存在。");
+            return state;
+          }
+
+          if (state.operation.type === "delete") {
+            state.operation.verificationPassed = runtime.management === "quarantined";
+          } else {
+            state.operation.verificationPassed = runtime.health === "healthy";
+          }
+
+          state.operation.status = state.operation.verificationPassed ? "verifying" : "failed";
+          state.operation.message = state.operation.verificationPassed
+            ? "健康检查通过，等待确认完成。"
+            : `健康检查失败：${runtime.kind} ${runtime.version} 报告 ${runtime.health}。`;
+          addEvent(state, state.operation.message);
+          return state;
+        }
+
+        if (action.type === "COMPLETE") {
+          if (!state.operation) {
+            return fail(state, "没有可完成的操作。");
+          }
+          if (state.operation.status !== "verifying" || !state.operation.verificationPassed) {
+            return fail(state, "健康检查通过后才能完成操作。");
+          }
+          state.operation.status = "succeeded";
+          state.operation.message = "操作完成，当前状态已生效。";
+          addEvent(state, `操作完成：${state.operation.runtimeLabel}。`);
+          return state;
+        }
+
+        if (action.type === "ROLLBACK") {
+          if (!state.operation) {
+            return fail(state, "没有可回滚的操作。");
+          }
+          if (!["executing", "verifying", "failed"].includes(state.operation.status)) {
+            return fail(state, "当前操作状态不能回滚。");
+          }
+
+          const operation = state.operation;
+          const runtime = runtimeById(state, operation.runtimeId);
+          if (operation.type === "switch") {
+            state.activation[runtime.kind] = operation.previousRuntimeId;
+          }
+          if (operation.type === "migrate") {
+            runtime.path = operation.previousPath;
+            runtime.volume = operation.previousVolume;
+          }
+          if (operation.type === "delete") {
+            runtime.management = operation.previousManagement;
+          }
+          operation.status = "rolled_back";
+          operation.verificationPassed = false;
+          operation.message = "已从恢复点回滚，目标变更被撤销。";
+          addEvent(state, `已回滚：${operation.runtimeLabel}。`);
+          return state;
+        }
+
+        if (action.type === "CLEAR_OPERATION") {
+          if (!state.operation) {
+            return fail(state, "没有需要关闭的操作记录。");
+          }
+          if (!terminalStatuses.has(state.operation.status)) {
+            return fail(state, "只有已结束的操作记录可以关闭。");
+          }
+          state.operation = null;
+          addEvent(state, "已关闭操作详情。");
+          return state;
+        }
+
+        return fail(state, `未知操作：${action.type}`);
+      }
+
+      return {
+        initialState,
+        reducer,
+        actions: {
+          reset: () => ({ type: "RESET" }),
+          scan: () => ({ type: "SCAN" }),
+          adopt: (runtimeId) => ({ type: "ADOPT", runtimeId }),
+          planSwitch: (runtimeId) => ({ type: "PLAN_SWITCH", runtimeId }),
+          planMigrate: (runtimeId, targetPath) => ({ type: "PLAN_MIGRATE", runtimeId, targetPath }),
+          planDelete: (runtimeId) => ({ type: "PLAN_DELETE", runtimeId }),
+          validate: () => ({ type: "VALIDATE_PLAN" }),
+          createRecovery: () => ({ type: "CREATE_RECOVERY" }),
+          execute: () => ({ type: "EXECUTE" }),
+          verify: () => ({ type: "VERIFY" }),
+          complete: () => ({ type: "COMPLETE" }),
+          rollback: () => ({ type: "ROLLBACK" }),
+          clearOperation: () => ({ type: "CLEAR_OPERATION" })
+        }
+      };
+    })();
+  </script>
+
+  <script>
+    const scenarios = [
+      {
+        id: "switch",
+        tab: "正常切换",
+        title: "纳管 Python 3.12 并安全切换",
+        description: "先扫描并纳管目标版本，再完成校验、恢复点、执行和健康检查。观察激活路径只在执行阶段变化。",
+        steps: [
+          ["扫描环境", EnvModel.actions.scan()],
+          ["纳管 Python 3.12", EnvModel.actions.adopt("python-3.12")],
+          ["创建切换计划", EnvModel.actions.planSwitch("python-3.12")],
+          ["校验计划", EnvModel.actions.validate()],
+          ["创建恢复点", EnvModel.actions.createRecovery()],
+          ["执行切换", EnvModel.actions.execute()],
+          ["运行健康检查", EnvModel.actions.verify()],
+          ["完成操作", EnvModel.actions.complete()]
+        ]
+      },
+      {
+        id: "migrate",
+        tab: "跨盘迁移",
+        title: "把 Node.js 22 迁移到环境数据根目录",
+        description: "模拟从 D 盘迁移到 E 盘。重点观察迁移只有在恢复点完成后才能执行，路径变更后仍需健康检查。",
+        steps: [
+          ["扫描环境", EnvModel.actions.scan()],
+          ["纳管 Node.js 22", EnvModel.actions.adopt("node-22")],
+          [
+            "创建迁移计划",
+            EnvModel.actions.planMigrate(
+              "node-22",
+              "E:/AgentEnvManagerData/runtimes/node/22.22.0"
+            )
+          ],
+          ["校验计划", EnvModel.actions.validate()],
+          ["创建恢复点", EnvModel.actions.createRecovery()],
+          ["执行迁移", EnvModel.actions.execute()],
+          ["运行健康检查", EnvModel.actions.verify()],
+          ["完成操作", EnvModel.actions.complete()]
+        ]
+      },
+      {
+        id: "rollback",
+        tab: "失败回滚",
+        title: "切换到健康状态异常的 Node.js 20",
+        description: "这个版本通过执行阶段后会在健康检查中失败。观察失败状态禁止完成，并可以从恢复点恢复原版本。",
+        steps: [
+          ["扫描环境", EnvModel.actions.scan()],
+          ["纳管 Node.js 20", EnvModel.actions.adopt("node-20")],
+          ["创建切换计划", EnvModel.actions.planSwitch("node-20")],
+          ["校验计划", EnvModel.actions.validate()],
+          ["创建恢复点", EnvModel.actions.createRecovery()],
+          ["执行切换", EnvModel.actions.execute()],
+          ["运行健康检查", EnvModel.actions.verify()],
+          ["尝试完成操作", EnvModel.actions.complete()],
+          ["执行回滚", EnvModel.actions.rollback()]
+        ]
+      },
+      {
+        id: "guards",
+        tab: "非法操作",
+        title: "系统 Shell 和未准备计划必须被拒绝",
+        description: "尝试迁移系统 cmd、执行没有恢复点的计划，并观察状态机如何阻止可能破坏环境的操作。",
+        steps: [
+          ["扫描环境", EnvModel.actions.scan()],
+          [
+            "尝试迁移系统 Shell",
+            {
+              type: "PLAN_MIGRATE",
+              runtimeId: "system-cmd",
+              targetPath: "E:/AgentEnvManagerData/system-cmd"
+            }
+          ],
+          ["纳管 Git", EnvModel.actions.adopt("git-2.50")],
+          [
+            "创建 Git 迁移计划",
+            EnvModel.actions.planMigrate(
+              "git-2.50",
+              "E:/AgentEnvManagerData/runtimes/git/2.50.1"
+            )
+          ],
+          ["跳过恢复点直接执行", EnvModel.actions.execute()],
+          ["校验计划", EnvModel.actions.validate()]
+        ]
+      }
+    ];
+
+    let state = EnvModel.initialState();
+    let activeScenarioId = scenarios[0].id;
+    let scenarioStepIndex = 0;
+
+    const elements = {
+      changeBadge: document.getElementById("change-badge"),
+      inventorySummary: document.getElementById("inventory-summary"),
+      operationSummary: document.getElementById("operation-summary"),
+      errorPanel: document.getElementById("error-panel"),
+      runtimesTable: document.getElementById("runtimes-table"),
+      activationTable: document.getElementById("activation-table"),
+      operationDetail: document.getElementById("operation-detail"),
+      recoveryList: document.getElementById("recovery-list"),
+      eventList: document.getElementById("event-list"),
+      runtimeSelect: document.getElementById("runtime-select"),
+      tabs: document.getElementById("tabs"),
+      scenarioDescription: document.getElementById("scenario-description"),
+      scenarioSteps: document.getElementById("scenario-steps")
+    };
+
+    const operationLabels = {
+      draft: "草稿",
+      validated: "已校验",
+      recovery_ready: "恢复点已就绪",
+      executing: "执行中",
+      verifying: "验证中",
+      succeeded: "已完成",
+      failed: "失败",
+      rolled_back: "已回滚"
+    };
+
+    const typeLabels = {
+      switch: "版本切换",
+      migrate: "位置迁移",
+      delete: "隔离删除"
+    };
+
+    const managementLabels = {
+      observed: "仅观测",
+      managed: "已纳管",
+      quarantined: "已隔离"
+    };
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function badgeClass(value) {
+      if (["succeeded", "healthy", "managed"].includes(value)) return "good";
+      if (["failed", "degraded", "quarantined"].includes(value)) return "bad";
+      if (["draft", "validated", "recovery_ready", "executing", "verifying", "observed"].includes(value)) {
+        return "info";
+      }
+      return "warn";
+    }
+
+    function dispatch(action) {
+      state = EnvModel.reducer(state, action);
+      render();
+    }
+
+    function renderRuntimes() {
+      if (!state.inventoryLoaded) {
+        elements.runtimesTable.innerHTML = '<p class="empty">点击“扫描本机环境”开始。</p>';
+        return;
+      }
+
+      const rows = state.runtimes.map((runtime) => `
+        <tr>
+          <td>${escapeHtml(runtime.kind)}</td>
+          <td>${escapeHtml(runtime.version)}</td>
+          <td><span class="badge ${badgeClass(runtime.management)}">${escapeHtml(managementLabels[runtime.management])}</span></td>
+          <td class="path">${escapeHtml(runtime.path)}</td>
+          <td><span class="badge ${badgeClass(runtime.health)}">${escapeHtml(runtime.health)}</span></td>
+          <td>${runtime.systemComponent ? "是" : "否"}</td>
+        </tr>
+      `).join("");
+
+      elements.runtimesTable.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>类型</th>
+              <th>版本</th>
+              <th>管理状态</th>
+              <th>物理位置</th>
+              <th>健康状态</th>
+              <th>系统组件</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderActivation() {
+      const rows = Object.entries(state.activation).map(([kind, runtimeId]) => {
+        const runtime = state.runtimes.find((item) => item.id === runtimeId);
+        return `
+          <tr>
+            <td>${escapeHtml(kind)}</td>
+            <td>${runtime ? escapeHtml(`${runtime.kind} ${runtime.version}`) : "未扫描"}</td>
+          </tr>
+        `;
+      }).join("");
+
+      elements.activationTable.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>对象</th><th>当前激活内容</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderOperation() {
+      const operation = state.operation;
+      if (!operation) {
+        elements.operationDetail.innerHTML = '<span class="empty">尚未创建操作。</span>';
+        elements.operationSummary.textContent = "无";
+        return;
+      }
+
+      const runtime = state.runtimes.find((item) => item.id === operation.runtimeId);
+      elements.operationSummary.innerHTML = `
+        ${escapeHtml(typeLabels[operation.type] || operation.type)}
+        ·
+        <span class="badge ${badgeClass(operation.status)}">${escapeHtml(operationLabels[operation.status])}</span>
+      `;
+      elements.operationDetail.innerHTML = `
+        <div class="grid-2">
+          <div class="field">
+            <span class="field-label">操作对象</span>
+            <span class="field-value">${escapeHtml(operation.runtimeLabel)}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">操作类型</span>
+            <span class="field-value">${escapeHtml(typeLabels[operation.type] || operation.type)}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">当前状态</span>
+            <span class="field-value">${escapeHtml(operationLabels[operation.status])}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">健康检查</span>
+            <span class="field-value">${operation.verificationPassed ? "通过" : "未通过或未执行"}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">目标路径</span>
+            <span class="field-value path">${escapeHtml(operation.targetPath || "不适用")}</span>
+          </div>
+          <div class="field">
+            <span class="field-label">运行时位置</span>
+            <span class="field-value path">${escapeHtml(runtime ? runtime.path : "已不存在")}</span>
+          </div>
+        </div>
+        <p class="note">${escapeHtml(operation.message)}</p>
+      `;
+    }
+
+    function renderRecoveryPoints() {
+      if (!state.recoveryPoints.length) {
+        elements.recoveryList.innerHTML = '<li class="empty">尚未创建恢复点。</li>';
+        return;
+      }
+      elements.recoveryList.innerHTML = state.recoveryPoints.map((point) => `
+        <li>
+          <strong>${escapeHtml(point.id)}</strong>
+          <br>
+          ${escapeHtml(point.runtimeLabel)} · ${escapeHtml(typeLabels[point.operationType] || point.operationType)}
+          <br>
+          <span class="path">${escapeHtml(point.previousPath)}</span>
+        </li>
+      `).join("");
+    }
+
+    function renderEvents() {
+      elements.eventList.innerHTML = state.events
+        .slice(0, 12)
+        .map((event) => `<li>${escapeHtml(event)}</li>`)
+        .join("");
+    }
+
+    function renderSelect() {
+      if (!state.inventoryLoaded) {
+        elements.runtimeSelect.innerHTML = '<option value="">请先扫描</option>';
+        elements.runtimeSelect.disabled = true;
+        return;
+      }
+      elements.runtimeSelect.disabled = false;
+      const previousValue = elements.runtimeSelect.value;
+      elements.runtimeSelect.innerHTML = state.runtimes.map((runtime) => `
+        <option value="${escapeHtml(runtime.id)}">
+          ${escapeHtml(runtime.kind)} ${escapeHtml(runtime.version)} · ${escapeHtml(managementLabels[runtime.management])}
+        </option>
+      `).join("");
+      if (state.runtimes.some((runtime) => runtime.id === previousValue)) {
+        elements.runtimeSelect.value = previousValue;
+      }
+    }
+
+    function renderScenarios() {
+      elements.tabs.innerHTML = scenarios.map((scenario) => `
+        <button
+          class="tab ${scenario.id === activeScenarioId ? "active" : ""}"
+          data-scenario="${escapeHtml(scenario.id)}"
+        >
+          ${escapeHtml(scenario.tab)}
+        </button>
+      `).join("");
+
+      const scenario = scenarios.find((item) => item.id === activeScenarioId);
+      elements.scenarioDescription.innerHTML = `<strong>${escapeHtml(scenario.title)}</strong><br>${escapeHtml(scenario.description)}`;
+      elements.scenarioSteps.innerHTML = scenario.steps.map(([label], index) => `
+        <li>
+          <button
+            class="step-button ${index < scenarioStepIndex ? "done" : ""}"
+            data-step="${index}"
+            ${index > scenarioStepIndex ? "disabled" : ""}
+          >
+            ${escapeHtml(label)}
+          </button>
+        </li>
+      `).join("");
+    }
+
+    function renderChangeBadge() {
+      const latest = state.events[0] || "等待操作";
+      let kind = "info";
+      if (state.lastError) kind = "bad";
+      else if (state.operation && state.operation.status === "succeeded") kind = "good";
+      else if (state.operation && state.operation.status === "rolled_back") kind = "warn";
+      elements.changeBadge.className = `badge ${kind}`;
+      elements.changeBadge.textContent = state.lastError ? "操作被拒绝" : latest.slice(0, 42);
+    }
+
+    function render() {
+      renderChangeBadge();
+      elements.inventorySummary.textContent = state.inventoryLoaded
+        ? `已发现 ${state.runtimes.length} 个对象，已纳管 ${state.runtimes.filter((item) => item.management === "managed").length} 个`
+        : "尚未扫描";
+      elements.errorPanel.hidden = !state.lastError;
+      elements.errorPanel.textContent = state.lastError;
+      renderRuntimes();
+      renderActivation();
+      renderOperation();
+      renderRecoveryPoints();
+      renderEvents();
+      renderSelect();
+      renderScenarios();
+    }
+
+    function selectedRuntimeId() {
+      return elements.runtimeSelect.value;
+    }
+
+    document.getElementById("scan-button").addEventListener("click", () => dispatch(EnvModel.actions.scan()));
+    document.getElementById("adopt-button").addEventListener("click", () => dispatch(EnvModel.actions.adopt(selectedRuntimeId())));
+    document.getElementById("plan-switch-button").addEventListener("click", () => dispatch(EnvModel.actions.planSwitch(selectedRuntimeId())));
+    document.getElementById("plan-migrate-button").addEventListener("click", () => {
+      const runtime = state.runtimes.find((item) => item.id === selectedRuntimeId());
+      const target = runtime
+        ? `E:/AgentEnvManagerData/runtimes/${runtime.kind.toLowerCase().replaceAll(" ", "-")}/${runtime.version}`
+        : "";
+      dispatch(EnvModel.actions.planMigrate(selectedRuntimeId(), target));
+    });
+    document.getElementById("plan-delete-button").addEventListener("click", () => dispatch(EnvModel.actions.planDelete(selectedRuntimeId())));
+    document.getElementById("validate-button").addEventListener("click", () => dispatch(EnvModel.actions.validate()));
+    document.getElementById("recovery-button").addEventListener("click", () => dispatch(EnvModel.actions.createRecovery()));
+    document.getElementById("execute-button").addEventListener("click", () => dispatch(EnvModel.actions.execute()));
+    document.getElementById("verify-button").addEventListener("click", () => dispatch(EnvModel.actions.verify()));
+    document.getElementById("complete-button").addEventListener("click", () => dispatch(EnvModel.actions.complete()));
+    document.getElementById("rollback-button").addEventListener("click", () => dispatch(EnvModel.actions.rollback()));
+    document.getElementById("clear-button").addEventListener("click", () => dispatch(EnvModel.actions.clearOperation()));
+
+    elements.tabs.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-scenario]");
+      if (!button) return;
+      activeScenarioId = button.dataset.scenario;
+      scenarioStepIndex = 0;
+      dispatch(EnvModel.actions.reset());
+    });
+
+    elements.scenarioSteps.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-step]");
+      if (!button || button.disabled) return;
+      const scenario = scenarios.find((item) => item.id === activeScenarioId);
+      const stepIndex = Number(button.dataset.step);
+      dispatch(scenario.steps[stepIndex][1]);
+      scenarioStepIndex = Math.min(stepIndex + 1, scenario.steps.length);
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
