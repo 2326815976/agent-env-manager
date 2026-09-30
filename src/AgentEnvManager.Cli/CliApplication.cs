@@ -76,21 +76,7 @@ public static class CliApplication
 
     private static EnvironmentManager CreateEnvironmentManager()
     {
-        var paths = ManagerPaths.Resolve(
+        return EnvironmentManagerFactory.Create(
             Environment.GetEnvironmentVariable("AGENT_ENV_MANAGER_HOME"));
-        return new EnvironmentManager(
-            new WindowsEnvironmentProbe(
-                new WindowsEnvironmentSnapshotSource()),
-            manifestStore: new FileEnvironmentManifestStore(
-                paths.ManifestDirectory),
-            index: new SqliteEnvironmentIndex(paths.DatabasePath),
-            recoveryPointStore: new FileEnvironmentRecoveryPointStore(
-                paths.RecoveryDirectory),
-            environmentVariableRecoveryPointStore:
-                new FileEnvironmentVariableRecoveryPointStore(
-                    paths.EnvironmentVariableRecoveryDirectory),
-            operationJournal: new FileOperationJournal(
-                paths.OperationDirectory),
-            managerPaths: paths);
     }
 }

@@ -1,16 +1,14 @@
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Scanning;
-using AgentEnvManager.Core.Storage;
 
-namespace AgentEnvManager.Wpf;
+namespace AgentEnvManager.Core.Storage;
 
-internal static class EnvironmentManagerFactory
+public static class EnvironmentManagerFactory
 {
-    public static EnvironmentManager Create()
+    public static EnvironmentManager Create(string? stateRoot = null)
     {
-        var paths = ManagerPaths.Resolve(
-            Environment.GetEnvironmentVariable("AGENT_ENV_MANAGER_HOME"));
+        var paths = ManagerPaths.Resolve(stateRoot);
         return new EnvironmentManager(
             new WindowsEnvironmentProbe(
                 new WindowsEnvironmentSnapshotSource()),
