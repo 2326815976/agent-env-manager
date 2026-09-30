@@ -62,6 +62,9 @@ public sealed record EnvironmentVariableTransactionResult(
 
 public interface IEnvironmentVariableRecoveryPointStore
 {
+    Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>> ReadAllAsync(
+        CancellationToken cancellationToken = default);
+
     Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,

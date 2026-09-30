@@ -35,7 +35,7 @@ internal sealed class VersionSwitcher(
             target.Location);
         var managedEntryPath = GetManagedEntryPath(target);
 
-        return new VersionSwitchPreview(
+        var preview = new VersionSwitchPreview(
             target.Fingerprint,
             target,
             active,
@@ -46,6 +46,28 @@ internal sealed class VersionSwitcher(
                 : $"从 {active.Name} {active.Version} 切换到 {target.Name} {target.Version}，只更新 {target.StableActivationPath} 激活点。",
             currentTarget is not null
                 && PathsEqual(currentTarget, targetLocation));
+        if (preview.IsAlreadyActive)
+        {
+            return preview;
+        }
+
+        var operation = OperationStateMachine.Create(
+            OperationType.Switch,
+            $"切换 {target.Name} 到 {target.Version}",
+            timeProvider,
+            target: target.Location,
+            impact: preview.Impact);
+        await operationJournal.SaveAsync(operation, cancellationToken);
+        var recoveryPoint = await recoveryPointStore.CreateAsync(
+            ToAdoptionPreview(target),
+            operation.Id,
+            active,
+            cancellationToken);
+        return preview with
+        {
+            OperationId = operation.Id,
+            RecoveryPointId = recoveryPoint.Id
+        };
     }
 
     public async Task<OperationRecord> SwitchAsync(
@@ -60,11 +82,21 @@ internal sealed class VersionSwitcher(
         preview = await EnsurePreviewIsCurrentAsync(
             preview,
             cancellationToken);
-        var operation = OperationStateMachine.Create(
-            OperationType.Switch,
-            $"切换 {preview.Target.Name} 到 {preview.Target.Version}",
-            timeProvider);
-        await operationJournal.SaveAsync(operation, cancellationToken);
+        var operation = string.IsNullOrWhiteSpace(preview.OperationId)
+            ? OperationStateMachine.Create(
+                OperationType.Switch,
+                $"切换 {preview.Target.Name} 到 {preview.Target.Version}",
+                timeProvider,
+                target: preview.Target.Location,
+                impact: preview.Impact)
+            : await operationJournal.GetAsync(
+                preview.OperationId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("切换计划不存在。");
+        if (string.IsNullOrWhiteSpace(preview.OperationId))
+        {
+            await operationJournal.SaveAsync(operation, cancellationToken);
+        }
         var executionStarted = false;
         try
         {
@@ -73,11 +105,17 @@ internal sealed class VersionSwitcher(
                 OperationStateMachine.MarkValidated(operation, timeProvider),
                 cancellationToken);
 
-            var recoveryPoint = await recoveryPointStore.CreateAsync(
-                ToAdoptionPreview(preview.Target),
-                operation.Id,
-                preview.Active,
-                cancellationToken);
+            var recoveryPoint = string.IsNullOrWhiteSpace(
+                preview.RecoveryPointId)
+                ? await recoveryPointStore.CreateAsync(
+                    ToAdoptionPreview(preview.Target),
+                    operation.Id,
+                    preview.Active,
+                    cancellationToken)
+                : await recoveryPointStore.GetAsync(
+                    preview.RecoveryPointId,
+                    cancellationToken)
+                    ?? throw new InvalidOperationException("切换恢复点不存在。");
             operation = await SaveTransitionAsync(
                 OperationStateMachine.MarkRecoveryReady(
                     operation,

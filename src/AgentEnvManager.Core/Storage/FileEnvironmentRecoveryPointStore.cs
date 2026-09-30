@@ -6,6 +6,19 @@ namespace AgentEnvManager.Core.Storage;
 public sealed class FileEnvironmentRecoveryPointStore(string recoveryDirectory)
     : IEnvironmentRecoveryPointStore
 {
+    public async Task<IReadOnlyList<AdoptionRecoveryPoint>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var points = await JsonDirectoryReader
+            .ReadAllAsync<AdoptionRecoveryPoint>(
+                recoveryDirectory,
+                "恢复点",
+                cancellationToken);
+        return points
+            .OrderByDescending(point => point.CreatedAtUtc)
+            .ToArray();
+    }
+
     public async Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
         string operationId,

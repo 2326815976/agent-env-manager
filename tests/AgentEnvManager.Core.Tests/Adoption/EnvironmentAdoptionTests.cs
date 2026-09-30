@@ -39,7 +39,7 @@ public sealed class EnvironmentAdoptionTests
         var observed = Assert.Single(inventory.Environments);
 
         var preview = await manager.PreviewAdoptionAsync(observed.Fingerprint);
-        var first = await manager.AdoptAsync(observed.Fingerprint);
+        var first = await manager.AdoptAsync(preview);
         var second = await manager.AdoptAsync(observed.Fingerprint);
         var refreshed = await manager.InspectAsync();
 
@@ -217,6 +217,12 @@ public sealed class EnvironmentAdoptionTests
     {
         public IReadOnlyList<AdoptionRecoveryPoint> Points { get; private set; } = [];
 
+        public Task<IReadOnlyList<AdoptionRecoveryPoint>> ReadAllAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(Points);
+        }
+
         public Task<AdoptionRecoveryPoint> CreateAsync(
             AdoptionPreview preview,
             string operationId,
@@ -247,6 +253,12 @@ public sealed class EnvironmentAdoptionTests
     private sealed class RecordingOperationJournal : IOperationJournal
     {
         public IReadOnlyList<OperationRecord> History { get; private set; } = [];
+
+        public Task<IReadOnlyList<OperationRecord>> ReadAllAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(History);
+        }
 
         public Task SaveAsync(
             OperationRecord operation,

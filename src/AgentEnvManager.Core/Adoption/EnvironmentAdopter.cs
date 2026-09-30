@@ -39,7 +39,7 @@ internal sealed class EnvironmentAdopter(
             ? activationPathFactory.CreateManagedEntry(activationKey)
             : existing.ManagedEntryPath;
 
-        return new AdoptionPreview(
+        var preview = new AdoptionPreview(
             fingerprint,
             proposedIdentity,
             observed.Asset,
@@ -50,6 +50,29 @@ internal sealed class EnvironmentAdopter(
             existing is not null,
             existing?.Identity,
             managedEntryPath);
+        if (existing is not null && existing.AssetHash == assetHash)
+        {
+            return preview;
+        }
+
+        var operation = OperationStateMachine.Create(
+            OperationType.Adopt,
+            $"纳管 {observed.Asset.Name}",
+            timeProvider,
+            target: observed.Asset.Location,
+            impact: preview.Impact);
+        await operationJournal.SaveAsync(operation, cancellationToken);
+        var recoveryPoint = await recoveryPointStore.CreateAsync(
+            preview,
+            operation.Id,
+            existing,
+            cancellationToken);
+
+        return preview with
+        {
+            OperationId = operation.Id,
+            RecoveryPointId = recoveryPoint.Id
+        };
     }
 
     public async Task<ManagedEnvironment> AdoptAsync(
@@ -72,11 +95,21 @@ internal sealed class EnvironmentAdopter(
             return new ManagedEnvironment(existing.Identity, existing);
         }
 
-        var operation = OperationStateMachine.Create(
-            OperationType.Adopt,
-            $"纳管 {preview.Asset.Name}",
-            timeProvider);
-        await operationJournal.SaveAsync(operation, cancellationToken);
+        var operation = string.IsNullOrWhiteSpace(preview.OperationId)
+            ? OperationStateMachine.Create(
+                OperationType.Adopt,
+                $"纳管 {preview.Asset.Name}",
+                timeProvider,
+                target: preview.Asset.Location,
+                impact: preview.Impact)
+            : await operationJournal.GetAsync(
+                preview.OperationId,
+                cancellationToken)
+                ?? throw new InvalidOperationException("纳管计划不存在。");
+        if (string.IsNullOrWhiteSpace(preview.OperationId))
+        {
+            await operationJournal.SaveAsync(operation, cancellationToken);
+        }
 
         EnvironmentManifest? savedManifest = null;
         try
@@ -86,11 +119,17 @@ internal sealed class EnvironmentAdopter(
                 OperationStateMachine.MarkValidated(operation, timeProvider),
                 cancellationToken);
 
-            var recoveryPoint = await recoveryPointStore.CreateAsync(
-                preview,
-                operation.Id,
-                existing,
-                cancellationToken);
+            var recoveryPoint = string.IsNullOrWhiteSpace(
+                preview.RecoveryPointId)
+                ? await recoveryPointStore.CreateAsync(
+                    preview,
+                    operation.Id,
+                    existing,
+                    cancellationToken)
+                : await recoveryPointStore.GetAsync(
+                    preview.RecoveryPointId,
+                    cancellationToken)
+                    ?? throw new InvalidOperationException("纳管恢复点不存在。");
             operation = await SaveTransitionAsync(
                 OperationStateMachine.MarkRecoveryReady(
                     operation,

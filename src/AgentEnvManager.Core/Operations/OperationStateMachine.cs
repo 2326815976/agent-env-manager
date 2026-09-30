@@ -5,7 +5,9 @@ internal static class OperationStateMachine
     public static OperationRecord Create(
         OperationType type,
         string summary,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        string? target = null,
+        string? impact = null)
     {
         var now = timeProvider.GetUtcNow();
         return new OperationRecord(
@@ -14,7 +16,9 @@ internal static class OperationStateMachine
             OperationState.Draft,
             now,
             now,
-            summary);
+            summary,
+            Target: target,
+            Impact: impact);
     }
 
     public static OperationRecord MarkValidated(

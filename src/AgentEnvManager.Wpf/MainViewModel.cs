@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Inspection;
 
@@ -10,14 +11,18 @@ public sealed class MainViewModel : ObservableObject
     private readonly IEnvironmentManagerClient _client;
     private EnvironmentRowViewModel? _selectedEnvironment;
     private AdoptionPreview? _pendingAdoption;
+    private VersionSwitchPreview? _pendingSwitch;
     private bool _isBusy;
     private string _statusMessage = "尚未扫描。";
     private string _adoptionImpact = string.Empty;
+    private string _pendingTarget = string.Empty;
+    private string _pendingRecoveryPoint = string.Empty;
     private DateTimeOffset? _reportGeneratedAt;
 
     public MainViewModel(IEnvironmentManagerClient client)
     {
         _client = client;
+        OperationCenter = new OperationCenterViewModel(client);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -30,9 +35,19 @@ public sealed class MainViewModel : ObservableObject
             AdoptAsync,
             () => !IsBusy && _pendingAdoption is not null,
             HandleException);
+        PreviewSwitchCommand = new RelayCommand(
+            PreviewSwitchAsync,
+            () => !IsBusy && SelectedEnvironment is not null,
+            HandleException);
+        SwitchCommand = new RelayCommand(
+            SwitchAsync,
+            () => !IsBusy && _pendingSwitch is not null,
+            HandleException);
     }
 
     public ObservableCollection<EnvironmentRowViewModel> Environments { get; } = [];
+
+    public OperationCenterViewModel OperationCenter { get; }
 
     public ObservableCollection<PathConflictViewModel> PathConflicts { get; } = [];
 
@@ -54,6 +69,8 @@ public sealed class MainViewModel : ObservableObject
             {
                 _pendingAdoption = null;
                 AdoptionImpact = string.Empty;
+                PendingTarget = string.Empty;
+                PendingRecoveryPoint = string.Empty;
                 RaiseCommandStates();
             }
         }
@@ -83,11 +100,27 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _adoptionImpact, value);
     }
 
+    public string PendingTarget
+    {
+        get => _pendingTarget;
+        private set => SetProperty(ref _pendingTarget, value);
+    }
+
+    public string PendingRecoveryPoint
+    {
+        get => _pendingRecoveryPoint;
+        private set => SetProperty(ref _pendingRecoveryPoint, value);
+    }
+
     public ICommand ScanCommand { get; }
 
     public ICommand PreviewAdoptionCommand { get; }
 
     public ICommand AdoptCommand { get; }
+
+    public ICommand PreviewSwitchCommand { get; }
+
+    public ICommand SwitchCommand { get; }
 
     public async Task ScanAsync()
     {
@@ -95,15 +128,12 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var report = await _client.InspectAsync();
-            Replace(
-                Environments,
+            Environments.Replace(
                 report.Environments.Select(
                     environment => new EnvironmentRowViewModel(environment)));
-            Replace(
-                PathConflicts,
+            PathConflicts.Replace(
                 report.PathConflicts.Select(PathConflictViewModel.From));
-            Replace(
-                CommandPathConflicts,
+            CommandPathConflicts.Replace(
                 report.CommandPathConflicts.Select(
                     CommandPathConflictViewModel.From));
 
@@ -131,6 +161,11 @@ public sealed class MainViewModel : ObservableObject
                 new EnvironmentFingerprint(
                     SelectedEnvironment.Fingerprint.Value));
             AdoptionImpact = _pendingAdoption.Impact;
+            PendingTarget = _pendingAdoption.Asset.Location;
+            PendingRecoveryPoint = string.IsNullOrWhiteSpace(
+                _pendingAdoption.RecoveryPointId)
+                ? "未记录"
+                : $"恢复点 {_pendingAdoption.RecoveryPointId}";
             StatusMessage = "纳管预览已生成，请确认影响范围。";
         }
         finally
@@ -154,6 +189,59 @@ public sealed class MainViewModel : ObservableObject
                 $"{managed.Manifest.Name} 已纳管。";
             _pendingAdoption = null;
             AdoptionImpact = string.Empty;
+            PendingTarget = string.Empty;
+            PendingRecoveryPoint = string.Empty;
+            await ScanAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task PreviewSwitchAsync()
+    {
+        if (SelectedEnvironment is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            _pendingSwitch = await _client.PreviewVersionSwitchAsync(
+                new EnvironmentFingerprint(
+                    SelectedEnvironment.Fingerprint.Value));
+            AdoptionImpact = _pendingSwitch.Impact;
+            PendingTarget = _pendingSwitch.Target.Location;
+            PendingRecoveryPoint = string.IsNullOrWhiteSpace(
+                _pendingSwitch.RecoveryPointId)
+                ? "未记录"
+                : $"恢复点 {_pendingSwitch.RecoveryPointId}";
+            StatusMessage = "版本切换预览已生成，请确认影响范围。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task SwitchAsync()
+    {
+        if (_pendingSwitch is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            await _client.SwitchVersionAsync(_pendingSwitch);
+            StatusMessage = $"{_pendingSwitch.Target.Name} 已切换。";
+            _pendingSwitch = null;
+            AdoptionImpact = string.Empty;
+            PendingTarget = string.Empty;
+            PendingRecoveryPoint = string.Empty;
             await ScanAsync();
         }
         finally
@@ -167,6 +255,8 @@ public sealed class MainViewModel : ObservableObject
         ((RelayCommand)ScanCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PreviewAdoptionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)AdoptCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PreviewSwitchCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)SwitchCommand).RaiseCanExecuteChanged();
     }
 
     private void HandleException(Exception exception)
@@ -174,14 +264,4 @@ public sealed class MainViewModel : ObservableObject
         StatusMessage = $"操作失败：{exception.Message}";
     }
 
-    private static void Replace<T>(
-        ObservableCollection<T> target,
-        IEnumerable<T> values)
-    {
-        target.Clear();
-        foreach (var value in values)
-        {
-            target.Add(value);
-        }
-    }
 }

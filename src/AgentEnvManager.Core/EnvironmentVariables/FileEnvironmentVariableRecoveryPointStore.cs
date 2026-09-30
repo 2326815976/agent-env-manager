@@ -7,6 +7,20 @@ public sealed class FileEnvironmentVariableRecoveryPointStore(
     string recoveryDirectory)
     : IEnvironmentVariableRecoveryPointStore
 {
+    public async Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        ReadAllAsync(
+            CancellationToken cancellationToken = default)
+    {
+        var points = await JsonDirectoryReader
+            .ReadAllAsync<EnvironmentVariableRecoveryPoint>(
+                recoveryDirectory,
+                "恢复点",
+                cancellationToken);
+        return points
+            .OrderByDescending(point => point.CreatedAtUtc)
+            .ToArray();
+    }
+
     public async Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,

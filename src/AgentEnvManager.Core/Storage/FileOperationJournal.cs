@@ -6,6 +6,18 @@ namespace AgentEnvManager.Core.Storage;
 public sealed class FileOperationJournal(string operationDirectory)
     : IOperationJournal
 {
+    public async Task<IReadOnlyList<OperationRecord>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var records = await JsonDirectoryReader.ReadAllAsync<OperationRecord>(
+            operationDirectory,
+            "操作记录",
+            cancellationToken);
+        return records
+            .OrderByDescending(record => record.UpdatedAtUtc)
+            .ToArray();
+    }
+
     public async Task SaveAsync(
         OperationRecord operation,
         CancellationToken cancellationToken = default)

@@ -42,7 +42,9 @@ public sealed record AdoptionPreview(
     string Impact,
     bool IsAlreadyManaged,
     EnvironmentIdentity? ExistingIdentity,
-    string ManagedEntryPath = "");
+    string ManagedEntryPath = "",
+    string? OperationId = null,
+    string? RecoveryPointId = null);
 
 public sealed record ManagedEnvironment(
     EnvironmentIdentity Identity,
@@ -89,6 +91,9 @@ public interface IStableActivationPathFactory
 
 public interface IEnvironmentRecoveryPointStore
 {
+    Task<IReadOnlyList<AdoptionRecoveryPoint>> ReadAllAsync(
+        CancellationToken cancellationToken = default);
+
     Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
         string operationId,

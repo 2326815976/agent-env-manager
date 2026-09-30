@@ -14,7 +14,9 @@ public sealed record VersionSwitchPreview(
     string ActivationPath,
     string ManagedEntryPath,
     string Impact,
-    bool IsAlreadyActive);
+    bool IsAlreadyActive,
+    string? OperationId = null,
+    string? RecoveryPointId = null);
 
 public sealed record RuntimeHealthCheckResult(
     bool IsHealthy,

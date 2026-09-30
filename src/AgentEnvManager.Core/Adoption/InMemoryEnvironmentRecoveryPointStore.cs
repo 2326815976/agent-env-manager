@@ -6,6 +6,15 @@ internal sealed class InMemoryEnvironmentRecoveryPointStore
     public static InMemoryEnvironmentRecoveryPointStore Instance { get; } = new();
     private readonly Dictionary<string, AdoptionRecoveryPoint> _points = [];
 
+    public Task<IReadOnlyList<AdoptionRecoveryPoint>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<AdoptionRecoveryPoint>>(
+            _points.Values
+                .OrderByDescending(point => point.CreatedAtUtc)
+                .ToArray());
+    }
+
     public Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
         string operationId,

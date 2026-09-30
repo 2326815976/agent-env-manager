@@ -1,5 +1,8 @@
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Activation;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Wpf;
 
 namespace AgentEnvManager.Wpf.Tests;
@@ -118,6 +121,10 @@ public sealed class MainViewModelTests
         viewModel.SelectedEnvironment = Assert.Single(viewModel.Environments);
 
         await viewModel.PreviewAdoptionAsync();
+
+        Assert.Equal(@"D:\Runtimes\node", viewModel.PendingTarget);
+        Assert.Contains("恢复点", viewModel.PendingRecoveryPoint);
+
         await viewModel.AdoptAsync();
 
         Assert.Equal(
@@ -145,6 +152,47 @@ public sealed class MainViewModelTests
 
         public Task<ManagedEnvironment> AdoptAsync(
             AdoptionPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+            EnvironmentFingerprint fingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> SwitchVersionAsync(
+            VersionSwitchPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+            ListEnvironmentRecoveryPointsAsync(
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+            ListEnvironmentVariableRecoveryPointsAsync(
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> RollbackOperationAsync(
+            string operationId,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
@@ -185,7 +233,9 @@ public sealed class MainViewModelTests
                 @"C:\Activations\node\current",
                 "纳管不会移动原始文件。",
                 IsAlreadyManaged: false,
-                ExistingIdentity: null);
+                ExistingIdentity: null,
+                OperationId: "operation-1",
+                RecoveryPointId: "recovery-1");
             return Task.FromResult(LastPreview);
         }
 
@@ -211,6 +261,47 @@ public sealed class MainViewModelTests
                     DateTimeOffset.UnixEpoch,
                     "activation-identity",
                     @"C:\shims\node")));
+        }
+
+        public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+            EnvironmentFingerprint fingerprint,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> SwitchVersionAsync(
+            VersionSwitchPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+            ListEnvironmentRecoveryPointsAsync(
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+            ListEnvironmentVariableRecoveryPointsAsync(
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> RollbackOperationAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
         }
     }
 }

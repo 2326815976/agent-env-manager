@@ -162,7 +162,11 @@ internal sealed class EnvironmentVariableService(
         var operation = OperationStateMachine.Create(
             OperationType.EnvironmentVariables,
             $"更新 {preview.Changes.Count} 个环境变量",
-            timeProvider);
+            timeProvider,
+            target: string.Join(
+                "、",
+                preview.Changes.Select(change => change.Name)),
+            impact: preview.Impact);
         await operationJournal.SaveAsync(operation, cancellationToken);
         var executionStarted = false;
 

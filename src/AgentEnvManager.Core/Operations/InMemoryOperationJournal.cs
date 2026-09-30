@@ -4,6 +4,18 @@ internal sealed class InMemoryOperationJournal : IOperationJournal
 {
     private readonly List<OperationRecord> _operations = [];
 
+    public Task<IReadOnlyList<OperationRecord>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        lock (_operations)
+        {
+            return Task.FromResult<IReadOnlyList<OperationRecord>>(
+                _operations
+                    .OrderByDescending(operation => operation.UpdatedAtUtc)
+                    .ToArray());
+        }
+    }
+
     public Task SaveAsync(
         OperationRecord operation,
         CancellationToken cancellationToken = default)

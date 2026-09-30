@@ -27,10 +27,15 @@ public sealed record OperationRecord(
     DateTimeOffset UpdatedAtUtc,
     string Summary,
     string? RecoveryPointId = null,
-    string? FailureReason = null);
+    string? FailureReason = null,
+    string? Target = null,
+    string? Impact = null);
 
 public interface IOperationJournal
 {
+    Task<IReadOnlyList<OperationRecord>> ReadAllAsync(
+        CancellationToken cancellationToken = default);
+
     Task SaveAsync(
         OperationRecord operation,
         CancellationToken cancellationToken = default);

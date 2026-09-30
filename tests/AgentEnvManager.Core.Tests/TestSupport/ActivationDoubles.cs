@@ -132,6 +132,13 @@ internal sealed class RecordingRecoveryPointStore
 {
     private readonly List<AdoptionRecoveryPoint> _points = [];
 
+    public Task<IReadOnlyList<AdoptionRecoveryPoint>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<AdoptionRecoveryPoint>>(
+            _points);
+    }
+
     public Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
         string operationId,
@@ -162,6 +169,12 @@ internal sealed class RecordingRecoveryPointStore
 internal sealed class RecordingOperationJournal : IOperationJournal
 {
     public IReadOnlyList<OperationRecord> History { get; private set; } = [];
+
+    public Task<IReadOnlyList<OperationRecord>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(History);
+    }
 
     public Task SaveAsync(
         OperationRecord operation,

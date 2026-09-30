@@ -13,6 +13,9 @@ public sealed class EnvironmentManager
     private readonly VersionSwitcher _switcher;
     private readonly IOperationJournal _operationJournal;
     private readonly EnvironmentVariableService _environmentVariables;
+    private readonly IEnvironmentRecoveryPointStore _recoveryPointStore;
+    private readonly IEnvironmentVariableRecoveryPointStore
+        _environmentVariableRecoveryPointStore;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -44,12 +47,15 @@ public sealed class EnvironmentManager
         var link = activationLink ?? new WindowsJunctionActivationLink();
         var runtimeHealthCheck = healthCheck ?? new ProcessRuntimeHealthCheck();
         _operationJournal = journal;
+        _recoveryPointStore = recoveryStore;
+        _environmentVariableRecoveryPointStore =
+            environmentVariableRecoveryPointStore
+                ?? new InMemoryEnvironmentVariableRecoveryPointStore();
         _environmentVariables = new EnvironmentVariableService(
             userEnvironmentVariableStore
                 ?? new WindowsUserEnvironmentVariableStore(),
             resolvedManagerPaths.ShimDirectory,
-            environmentVariableRecoveryPointStore
-                ?? new InMemoryEnvironmentVariableRecoveryPointStore(),
+            _environmentVariableRecoveryPointStore,
             store,
             journal,
             clock);
@@ -129,6 +135,27 @@ public sealed class EnvironmentManager
         CancellationToken cancellationToken = default)
     {
         return RollbackOperationCoreAsync(operationId, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _operationJournal.ReadAllAsync(cancellationToken);
+    }
+
+    public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        ListEnvironmentRecoveryPointsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _recoveryPointStore.ReadAllAsync(cancellationToken);
+    }
+
+    public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        ListEnvironmentVariableRecoveryPointsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _environmentVariableRecoveryPointStore.ReadAllAsync(
+            cancellationToken);
     }
 
     public VersionResolutionResult ResolveRuntimeVersion(

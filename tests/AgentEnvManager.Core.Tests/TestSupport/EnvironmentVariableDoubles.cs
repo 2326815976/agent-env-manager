@@ -92,6 +92,15 @@ internal sealed class RecordingEnvironmentVariableRecoveryPointStore
     private readonly Dictionary<string, EnvironmentVariableRecoveryPoint>
         _points = [];
 
+    public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        ReadAllAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<
+            IReadOnlyList<EnvironmentVariableRecoveryPoint>>(
+            _points.Values.ToArray());
+    }
+
     public Task<EnvironmentVariableRecoveryPoint> CreateAsync(
         string operationId,
         IReadOnlyDictionary<string, string?> originalValues,
