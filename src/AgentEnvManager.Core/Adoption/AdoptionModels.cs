@@ -17,6 +17,7 @@ public sealed record EnvironmentManifest(
     string StableActivationPath,
     string AssetHash,
     string RecoveryPointId,
+    string OperationId,
     bool IsSystemComponent,
     DateTimeOffset AdoptedAtUtc);
 
@@ -24,6 +25,7 @@ public sealed record AdoptionRecoveryPoint(
     string Id,
     EnvironmentFingerprint Fingerprint,
     EnvironmentIdentity? PreviousIdentity,
+    EnvironmentManifest? PreviousManifest,
     string Description,
     DateTimeOffset CreatedAtUtc);
 
@@ -53,6 +55,10 @@ public interface IEnvironmentManifestStore
     Task<EnvironmentManifest> SaveAsync(
         EnvironmentManifest manifest,
         CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(
+        EnvironmentIdentity identity,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IEnvironmentIndex
@@ -79,5 +85,9 @@ public interface IEnvironmentRecoveryPointStore
     Task<AdoptionRecoveryPoint> CreateAsync(
         AdoptionPreview preview,
         EnvironmentManifest? existingManifest,
+        CancellationToken cancellationToken = default);
+
+    Task<AdoptionRecoveryPoint?> GetAsync(
+        string recoveryPointId,
         CancellationToken cancellationToken = default);
 }

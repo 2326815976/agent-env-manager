@@ -25,6 +25,7 @@ internal static class AdoptionReportRenderer
     {
         output.WriteLine($"纳管完成: {managed.Manifest.Name}");
         output.WriteLine($"环境身份: {managed.Identity.Value}");
+        output.WriteLine($"操作 ID: {managed.Manifest.OperationId}");
         output.WriteLine($"指纹: {managed.Manifest.Fingerprint.Value}");
         output.WriteLine($"版本: {managed.Manifest.Version ?? "未知"}");
         output.WriteLine($"稳定激活路径: {managed.Manifest.StableActivationPath}");

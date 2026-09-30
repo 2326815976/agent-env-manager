@@ -6,6 +6,7 @@ internal enum CliAction
     PreviewAdoption,
     Adopt,
     RebuildIndex,
+    Rollback,
     Help,
     Unknown
 }
@@ -13,6 +14,7 @@ internal enum CliAction
 internal sealed record CliRequest(
     CliAction Action,
     string? Fingerprint = null,
+    string? OperationId = null,
     string? UnknownCommand = null);
 
 internal static class CliArguments
@@ -51,6 +53,13 @@ internal static class CliArguments
         if (args[0] == "rebuild-index" && args.Count == 1)
         {
             return new CliRequest(CliAction.RebuildIndex);
+        }
+
+        if (args[0] == "rollback" && args.Count == 2)
+        {
+            return new CliRequest(
+                CliAction.Rollback,
+                OperationId: args[1]);
         }
 
         return new CliRequest(

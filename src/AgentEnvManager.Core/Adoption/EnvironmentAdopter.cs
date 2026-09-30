@@ -1,4 +1,5 @@
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Operations;
 
 namespace AgentEnvManager.Core.Adoption;
 
@@ -8,6 +9,7 @@ internal sealed class EnvironmentAdopter(
     IEnvironmentIndex index,
     IEnvironmentAssetHasher assetHasher,
     IEnvironmentRecoveryPointStore recoveryPointStore,
+    IOperationJournal operationJournal,
     IStableActivationPathFactory activationPathFactory,
     TimeProvider timeProvider)
 {
@@ -57,32 +59,98 @@ internal sealed class EnvironmentAdopter(
             cancellationToken);
         if (existing is not null && existing.AssetHash == preview.AssetHash)
         {
-            await RebuildIndexAsync(cancellationToken);
             return new ManagedEnvironment(existing.Identity, existing);
         }
 
-        var recoveryPoint = await recoveryPointStore.CreateAsync(
-            preview,
-            existing,
-            cancellationToken);
-        var manifest = await manifestStore.SaveAsync(
-            new EnvironmentManifest(
-                preview.ProposedIdentity,
-                preview.Fingerprint,
-                preview.Asset.Kind,
-                preview.Asset.Name,
-                preview.Asset.Version,
-                preview.Asset.Source,
-                preview.Asset.Location,
-                preview.StableActivationPath,
-                preview.AssetHash,
-                recoveryPoint.Id,
-                preview.Asset.IsSystemComponent,
-                timeProvider.GetUtcNow()),
-            cancellationToken);
+        var operation = OperationStateMachine.Create(
+            OperationType.Adopt,
+            $"纳管 {preview.Asset.Name}",
+            timeProvider);
+        await operationJournal.SaveAsync(operation, cancellationToken);
 
-        await RebuildIndexAsync(cancellationToken);
-        return new ManagedEnvironment(manifest.Identity, manifest);
+        EnvironmentManifest? savedManifest = null;
+        try
+        {
+            ValidateAdoption(preview);
+            operation = OperationStateMachine.MarkValidated(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+
+            var recoveryPoint = await recoveryPointStore.CreateAsync(
+                preview,
+                existing,
+                cancellationToken);
+            operation = OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPoint.Id,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+
+            operation = OperationStateMachine.BeginExecution(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+
+            savedManifest = await manifestStore.SaveAsync(
+                new EnvironmentManifest(
+                    preview.ProposedIdentity,
+                    preview.Fingerprint,
+                    preview.Asset.Kind,
+                    preview.Asset.Name,
+                    preview.Asset.Version,
+                    preview.Asset.Source,
+                    preview.Asset.Location,
+                    preview.StableActivationPath,
+                    preview.AssetHash,
+                    recoveryPoint.Id,
+                    operation.Id,
+                    preview.Asset.IsSystemComponent,
+                    timeProvider.GetUtcNow()),
+                cancellationToken);
+
+            await RebuildIndexAsync(cancellationToken);
+            operation = OperationStateMachine.BeginVerification(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+
+            var verified = await manifestStore.FindByFingerprintAsync(
+                preview.Fingerprint,
+                cancellationToken);
+            if (verified is null
+                || verified.AssetHash != preview.AssetHash)
+            {
+                throw new InvalidOperationException("纳管验证失败。");
+            }
+
+            operation = OperationStateMachine.Complete(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+            return new ManagedEnvironment(verified.Identity, verified);
+        }
+        catch (Exception exception)
+        {
+            operation = OperationStateMachine.Fail(
+                operation,
+                exception.Message,
+                timeProvider);
+            await operationJournal.SaveAsync(
+                operation,
+                CancellationToken.None);
+            await RestoreManifestAsync(
+                existing,
+                savedManifest,
+                CancellationToken.None);
+            operation = OperationStateMachine.Rollback(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(
+                operation,
+                CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<int> RebuildIndexAsync(
@@ -91,5 +159,113 @@ internal sealed class EnvironmentAdopter(
         var manifests = await manifestStore.ReadAllAsync(cancellationToken);
         await index.RebuildAsync(manifests, cancellationToken);
         return manifests.Count;
+    }
+
+    public async Task<OperationRecord> RollbackOperationAsync(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        var operation = await operationJournal.GetAsync(
+            operationId,
+            cancellationToken)
+            ?? throw new KeyNotFoundException("未找到操作记录。");
+        if (operation.State is OperationState.Succeeded
+            or OperationState.RolledBack)
+        {
+            throw new InvalidOperationException("该操作当前状态不能回滚。");
+        }
+
+        if (operation.RecoveryPointId is not null)
+        {
+            var recoveryPoint = await recoveryPointStore.GetAsync(
+                operation.RecoveryPointId,
+                cancellationToken);
+            if (recoveryPoint is not null)
+            {
+                var current = await manifestStore.FindByFingerprintAsync(
+                    recoveryPoint.Fingerprint,
+                    cancellationToken);
+                if (current is not null)
+                {
+                    await manifestStore.DeleteAsync(
+                        current.Identity,
+                        cancellationToken);
+                }
+
+                if (recoveryPoint.PreviousManifest is not null)
+                {
+                    await manifestStore.SaveAsync(
+                        recoveryPoint.PreviousManifest,
+                        cancellationToken);
+                }
+
+                await RebuildIndexAsync(cancellationToken);
+            }
+        }
+
+        if (operation.State != OperationState.Failed)
+        {
+            operation = OperationStateMachine.Fail(
+                operation,
+                "用户请求从恢复点回滚。",
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+        }
+
+        operation = OperationStateMachine.Rollback(
+            operation,
+            timeProvider);
+        await operationJournal.SaveAsync(operation, cancellationToken);
+        return operation;
+    }
+
+    private async Task RestoreManifestAsync(
+        EnvironmentManifest? existing,
+        EnvironmentManifest? savedManifest,
+        CancellationToken cancellationToken)
+    {
+        if (existing is null)
+        {
+            if (savedManifest is not null)
+            {
+                await manifestStore.DeleteAsync(
+                    savedManifest.Identity,
+                    cancellationToken);
+            }
+        }
+        else
+        {
+            await manifestStore.SaveAsync(existing, cancellationToken);
+        }
+
+        await RebuildIndexAsync(cancellationToken);
+    }
+
+    private static void ValidateAdoption(AdoptionPreview preview)
+    {
+        if (string.IsNullOrWhiteSpace(preview.Fingerprint.Value))
+        {
+            throw new InvalidOperationException("环境指纹不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.ProposedIdentity.Value))
+        {
+            throw new InvalidOperationException("环境身份不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.Asset.Location))
+        {
+            throw new InvalidOperationException("环境物理路径不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.AssetHash))
+        {
+            throw new InvalidOperationException("资产哈希不能为空。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.StableActivationPath))
+        {
+            throw new InvalidOperationException("稳定激活路径不能为空。");
+        }
     }
 }

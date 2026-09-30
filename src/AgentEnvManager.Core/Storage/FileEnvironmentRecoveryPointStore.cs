@@ -16,11 +16,30 @@ public sealed class FileEnvironmentRecoveryPointStore(string recoveryDirectory)
             Guid.NewGuid().ToString("N"),
             preview.Fingerprint,
             existingManifest?.Identity,
+            existingManifest,
             "纳管前记录 manifest 变更，原始环境文件不会被修改。",
             DateTimeOffset.UtcNow);
         var path = Path.Combine(recoveryDirectory, $"{point.Id}.json");
-        var json = JsonSerializer.Serialize(point, ManagerJson.Options);
-        await File.WriteAllTextAsync(path, json, cancellationToken);
+        await AtomicJsonFile.WriteAsync(
+            path,
+            point,
+            cancellationToken);
         return point;
+    }
+
+    public async Task<AdoptionRecoveryPoint?> GetAsync(
+        string recoveryPointId,
+        CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(recoveryDirectory, $"{recoveryPointId}.json");
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        var json = await File.ReadAllTextAsync(path, cancellationToken);
+        return JsonSerializer.Deserialize<AdoptionRecoveryPoint>(
+            json,
+            ManagerJson.Options);
     }
 }

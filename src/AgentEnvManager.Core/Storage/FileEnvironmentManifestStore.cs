@@ -71,14 +71,26 @@ public sealed class FileEnvironmentManifestStore(string manifestDirectory)
         var path = Path.Combine(
             manifestDirectory,
             $"{manifest.Identity.Value}.json");
-        var temporaryPath = $"{path}.tmp";
-        var json = JsonSerializer.Serialize(manifest, ManagerJson.Options);
-        await File.WriteAllTextAsync(
-            temporaryPath,
-            json,
+        await AtomicJsonFile.WriteAsync(
+            path,
+            manifest,
             cancellationToken);
-        File.Move(temporaryPath, path, overwrite: true);
         return manifest;
+    }
+
+    public Task DeleteAsync(
+        EnvironmentIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        var path = Path.Combine(
+            manifestDirectory,
+            $"{identity.Value}.json");
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+
+        return Task.CompletedTask;
     }
 
     private static async Task<FileStream> AcquireLockAsync(

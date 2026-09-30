@@ -61,6 +61,13 @@ public static class CliApplication
                 CliMessages.WriteIndexRebuild(count, Console.Out);
                 return 0;
 
+            case CliAction.Rollback:
+                var rolledBack = await manager.RollbackOperationAsync(
+                    request.OperationId!,
+                    cancellationToken);
+                CliMessages.WriteRollback(rolledBack, Console.Out);
+                return 0;
+
             default:
                 throw new InvalidOperationException("未知 CLI 操作。");
         }
@@ -77,6 +84,8 @@ public static class CliApplication
                 paths.ManifestDirectory),
             index: new SqliteEnvironmentIndex(paths.DatabasePath),
             recoveryPointStore: new FileEnvironmentRecoveryPointStore(
-                paths.RecoveryDirectory));
+                paths.RecoveryDirectory),
+            operationJournal: new FileOperationJournal(
+                paths.OperationDirectory));
     }
 }

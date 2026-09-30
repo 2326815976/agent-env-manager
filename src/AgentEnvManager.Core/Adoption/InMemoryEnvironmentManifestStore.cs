@@ -55,4 +55,16 @@ internal sealed class InMemoryEnvironmentManifestStore
             return Task.FromResult(manifest);
         }
     }
+
+    public Task DeleteAsync(
+        EnvironmentIdentity identity,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_manifests)
+        {
+            _manifests.RemoveAll(item => item.Identity == identity);
+        }
+
+        return Task.CompletedTask;
+    }
 }

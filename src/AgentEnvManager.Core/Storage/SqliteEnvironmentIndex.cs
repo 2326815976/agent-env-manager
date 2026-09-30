@@ -26,7 +26,8 @@ public sealed class SqliteEnvironmentIndex(string databasePath)
         createCommand.Transaction = (SqliteTransaction)transaction;
         createCommand.CommandText =
             """
-            CREATE TABLE IF NOT EXISTS environments (
+            DROP TABLE IF EXISTS environments;
+            CREATE TABLE environments (
                 identity TEXT PRIMARY KEY,
                 fingerprint TEXT NOT NULL UNIQUE,
                 kind TEXT NOT NULL,
@@ -38,10 +39,10 @@ public sealed class SqliteEnvironmentIndex(string databasePath)
                 stable_activation_path TEXT NOT NULL,
                 asset_hash TEXT NOT NULL,
                 recovery_point_id TEXT NOT NULL,
+                operation_id TEXT NOT NULL,
                 is_system_component INTEGER NOT NULL,
                 adopted_at_utc TEXT NOT NULL
             );
-            DELETE FROM environments;
             """;
         await createCommand.ExecuteNonQueryAsync(cancellationToken);
 
@@ -63,6 +64,7 @@ public sealed class SqliteEnvironmentIndex(string databasePath)
                     stable_activation_path,
                     asset_hash,
                     recovery_point_id,
+                    operation_id,
                     is_system_component,
                     adopted_at_utc
                 )
@@ -78,6 +80,7 @@ public sealed class SqliteEnvironmentIndex(string databasePath)
                     $stable_activation_path,
                     $asset_hash,
                     $recovery_point_id,
+                    $operation_id,
                     $is_system_component,
                     $adopted_at_utc
                 );
@@ -105,6 +108,9 @@ public sealed class SqliteEnvironmentIndex(string databasePath)
             insertCommand.Parameters.AddWithValue(
                 "$recovery_point_id",
                 manifest.RecoveryPointId);
+            insertCommand.Parameters.AddWithValue(
+                "$operation_id",
+                manifest.OperationId);
             insertCommand.Parameters.AddWithValue(
                 "$is_system_component",
                 manifest.IsSystemComponent ? 1 : 0);

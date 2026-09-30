@@ -88,8 +88,19 @@ public sealed class FileSystemEnvironmentAssetHasherTests
             EnvironmentManifest manifest,
             CancellationToken cancellationToken = default)
         {
+            _manifests.RemoveAll(item =>
+                item.Identity == manifest.Identity
+                || item.Fingerprint == manifest.Fingerprint);
             _manifests.Add(manifest);
             return Task.FromResult(manifest);
+        }
+
+        public Task DeleteAsync(
+            EnvironmentIdentity identity,
+            CancellationToken cancellationToken = default)
+        {
+            _manifests.RemoveAll(item => item.Identity == identity);
+            return Task.CompletedTask;
         }
     }
 

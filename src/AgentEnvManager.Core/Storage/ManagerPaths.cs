@@ -4,6 +4,7 @@ public sealed record ManagerPaths(
     string StateRoot,
     string ManifestDirectory,
     string RecoveryDirectory,
+    string OperationDirectory,
     string DatabasePath)
 {
     public static ManagerPaths Resolve(string? stateRoot = null)
@@ -18,6 +19,7 @@ public sealed record ManagerPaths(
             resolvedRoot,
             Path.Combine(resolvedRoot, "manifests"),
             Path.Combine(resolvedRoot, "recovery"),
+            Path.Combine(resolvedRoot, "operations"),
             Path.Combine(resolvedRoot, "index", "environments.db"));
     }
 }

@@ -1,4 +1,5 @@
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
 
 namespace AgentEnvManager.Core.Inspection;
@@ -15,6 +16,7 @@ public sealed class EnvironmentManager
         IEnvironmentIndex? index = null,
         IEnvironmentAssetHasher? assetHasher = null,
         IEnvironmentRecoveryPointStore? recoveryPointStore = null,
+        IOperationJournal? operationJournal = null,
         IStableActivationPathFactory? activationPathFactory = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
@@ -23,6 +25,7 @@ public sealed class EnvironmentManager
         var hasher = assetHasher ?? new FileSystemEnvironmentAssetHasher();
         var recoveryStore = recoveryPointStore
             ?? InMemoryEnvironmentRecoveryPointStore.Instance;
+        var journal = operationJournal ?? new InMemoryOperationJournal();
         var pathFactory = activationPathFactory
             ?? DefaultStableActivationPathFactory.Instance;
 
@@ -36,6 +39,7 @@ public sealed class EnvironmentManager
             environmentIndex,
             hasher,
             recoveryStore,
+            journal,
             pathFactory,
             clock);
     }
@@ -73,4 +77,12 @@ public sealed class EnvironmentManager
         return _adopter.RebuildIndexAsync(cancellationToken);
     }
 
+    public Task<OperationRecord> RollbackOperationAsync(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        return _adopter.RollbackOperationAsync(
+            operationId,
+            cancellationToken);
+    }
 }
