@@ -35,6 +35,10 @@ public static class EnvironmentManagerFactory
                 new CodexAgentAdapter(
                     new SystemAgentProcessRunner(),
                     new FileAgentConfigurationBackupStore(
+                        paths.AgentBackupDirectory)),
+                new ChatGptAgentAdapter(
+                    new SystemAgentProcessRunner(),
+                    new FileAgentConfigurationBackupStore(
                         paths.AgentBackupDirectory))
             ]);
     }

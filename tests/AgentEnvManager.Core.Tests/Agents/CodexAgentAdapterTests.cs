@@ -17,7 +17,7 @@ public sealed class CodexAgentAdapterTests
             var processRunner = new RecordingProcessRunner(
                 new AgentProcessResult(
                     0,
-                    "{\"type\":\"command_execution\",\"command\":\"node --version\",\"output\":\"24.1.0\"}",
+                    "{\"type\":\"command_execution\",\"command\":\"node --version\",\"exit_code\":0,\"output\":\"24.1.0\"}",
                     ""));
             var backupStore = new FileAgentConfigurationBackupStore(
                 Path.Combine(root, "backups"));
@@ -158,6 +158,112 @@ public sealed class CodexAgentAdapterTests
             Assert.Equal(
                 "original-binding",
                 await File.ReadAllTextAsync(bindingPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task BindAsync_requires_explicit_tool_success()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var codexHome = Path.Combine(root, "codex-home");
+            var managedEntry = Path.Combine(root, "shims", "node");
+            Directory.CreateDirectory(codexHome);
+            Directory.CreateDirectory(managedEntry);
+            var processRunner = new RecordingProcessRunner(
+                new AgentProcessResult(
+                    0,
+                    "{\"type\":\"command_execution\",\"command\":\"node --version\",\"output\":\"24.1.0\"}",
+                    string.Empty));
+            var adapter = new CodexAgentAdapter(
+                processRunner,
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")));
+            var plan = await adapter.CreatePlanAsync(
+                new AgentBindingRequest(
+                    codexHome,
+                    "codex-test.cmd",
+                    managedEntry,
+                    "Node.js",
+                    "24.1.0"));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => new AgentBindingManager(adapter).BindAsync(plan));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"tool_call\",\"status\":\"completed\",\"output\":\"24.1.0\"}}",
+        true)]
+    [InlineData(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"tool_call\",\"status\":\"success\",\"output\":\"24.1.0\"}}",
+        true)]
+    [InlineData(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"tool_call\",\"status\":\"failed\",\"output\":\"24.1.0\"}}",
+        false)]
+    [InlineData(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"tool_call\",\"exit_code\":0,\"output\":\"24.1.0\"}}",
+        true)]
+    [InlineData(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"tool_call\",\"exit_code\":1,\"output\":\"24.1.0\"}}",
+        false)]
+    public async Task CheckHealthAsync_requires_explicit_tool_success(
+        string output,
+        bool expected)
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var codexHome = Path.Combine(root, "codex-home");
+            var managedEntry = Path.Combine(root, "shims", "node");
+            Directory.CreateDirectory(codexHome);
+            Directory.CreateDirectory(managedEntry);
+            var processRunner = new RecordingProcessRunner(
+                new AgentProcessResult(0, output, string.Empty));
+            var adapter = new CodexAgentAdapter(
+                processRunner,
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")));
+            var plan = await adapter.CreatePlanAsync(
+                new AgentBindingRequest(
+                    codexHome,
+                    "codex-test.cmd",
+                    managedEntry,
+                    "Node.js",
+                    "24.1.0"));
+            await File.WriteAllTextAsync(
+                plan.BindingFilePath,
+                plan.BindingContent);
+            var binding = new AgentBinding(
+                plan.AgentName,
+                plan.ConfigurationDirectory,
+                plan.Executable,
+                plan.ManagedEntryPath,
+                plan.RuntimeName,
+                plan.RuntimeVersion,
+                plan.WorkspacePath,
+                plan.RuntimeCommand,
+                plan.HealthArguments,
+                plan.BindingFilePath,
+                new AgentConfigurationRecoveryPoint(
+                    "recovery",
+                    plan.AgentName,
+                    [],
+                    DateTimeOffset.UtcNow));
+
+            var result = await adapter.CheckHealthAsync(binding);
+
+            Assert.Equal(expected, result.IsHealthy);
         }
         finally
         {

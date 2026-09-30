@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using AgentEnvManager.Core.Storage;
 
 namespace AgentEnvManager.Core.Agents;
@@ -151,18 +150,10 @@ public sealed class CodexAgentAdapter(
             binding,
             binding.HealthArguments,
             cancellationToken);
-        var output = $"{result.StandardOutput}\n{result.StandardError}";
-        var healthy = result.ExitCode == 0
-            && ContainsSuccessfulToolExecution(result.StandardOutput)
-            && Regex.IsMatch(
-                output,
-                $@"(?<![A-Za-z0-9_.-]){Regex.Escape(binding.RuntimeVersion)}(?![A-Za-z0-9_.-])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        return new AgentHealthCheckResult(
-            healthy,
-            healthy
-                ? $"{binding.RuntimeName} 调用成功。"
-                : $"exit={result.ExitCode}; stdout={result.StandardOutput.Trim()}; stderr={result.StandardError.Trim()}");
+        return AgentHealthOutput.Evaluate(
+            result,
+            binding.RuntimeName,
+            binding.RuntimeVersion);
     }
 
     public Task RollbackAsync(
@@ -189,48 +180,4 @@ public sealed class CodexAgentAdapter(
         };
     }
 
-    private static bool ContainsSuccessfulToolExecution(string output)
-    {
-        foreach (var line in output.Split(
-                     ['\r', '\n'],
-                     StringSplitOptions.RemoveEmptyEntries
-                     | StringSplitOptions.TrimEntries))
-        {
-            if (!line.StartsWith('{'))
-            {
-                continue;
-            }
-
-            try
-            {
-                using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                if (!root.TryGetProperty("type", out var type)
-                    && root.TryGetProperty("item", out var item))
-                {
-                    root = item;
-                    root.TryGetProperty("type", out type);
-                }
-
-                if (type.ValueKind != JsonValueKind.String
-                    || type.GetString() is not (
-                        "command_execution" or "tool_call"))
-                {
-                    continue;
-                }
-
-                if (!root.TryGetProperty("exit_code", out var exitCode)
-                    || exitCode.ValueKind != JsonValueKind.Number
-                    || exitCode.GetInt32() == 0)
-                {
-                    return true;
-                }
-            }
-            catch (JsonException)
-            {
-            }
-        }
-
-        return false;
-    }
 }

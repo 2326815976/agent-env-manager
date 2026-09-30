@@ -292,6 +292,16 @@ public sealed class EnvironmentManager
             .BindAsync(plan, cancellationToken);
     }
 
+    public Task<AgentHealthCheckResult> CheckAgentHealthAsync(
+        string agentName,
+        AgentBinding binding,
+        CancellationToken cancellationToken = default)
+    {
+        return GetAgentAdapter(agentName).CheckHealthAsync(
+            binding,
+            cancellationToken);
+    }
+
     public Task RollbackAgentBindingAsync(
         string agentName,
         AgentBindingPlan plan,
