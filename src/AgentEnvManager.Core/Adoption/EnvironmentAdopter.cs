@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
 
@@ -36,7 +37,8 @@ internal sealed class EnvironmentAdopter(
             observed.Asset,
             assetHash,
             existing?.StableActivationPath
-            ?? activationPathFactory.Create(proposedIdentity),
+            ?? activationPathFactory.Create(new EnvironmentIdentity(
+                RuntimeActivationKey.Create(observed.Asset))),
             "纳管会创建可移植 manifest 并重建本地索引，不会移动原始文件。",
             existing is not null,
             existing?.Identity);

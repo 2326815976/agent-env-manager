@@ -18,7 +18,7 @@ internal sealed class InMemoryEnvironmentRecoveryPointStore
             preview.Fingerprint,
             existingManifest?.Identity,
             existingManifest,
-            "纳管前记录 manifest 变更，原始环境文件不会被修改。",
+            preview.Impact,
             DateTimeOffset.UtcNow);
         _points[point.Id] = point;
         return Task.FromResult(point);

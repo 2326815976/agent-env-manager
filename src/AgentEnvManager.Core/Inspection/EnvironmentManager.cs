@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
@@ -8,6 +9,8 @@ public sealed class EnvironmentManager
 {
     private readonly EnvironmentInspector _inspector;
     private readonly EnvironmentAdopter _adopter;
+    private readonly VersionSwitcher _switcher;
+    private readonly IOperationJournal _operationJournal;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -17,7 +20,9 @@ public sealed class EnvironmentManager
         IEnvironmentAssetHasher? assetHasher = null,
         IEnvironmentRecoveryPointStore? recoveryPointStore = null,
         IOperationJournal? operationJournal = null,
-        IStableActivationPathFactory? activationPathFactory = null)
+        IStableActivationPathFactory? activationPathFactory = null,
+        IEnvironmentActivationLink? activationLink = null,
+        IRuntimeHealthCheck? healthCheck = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -28,6 +33,9 @@ public sealed class EnvironmentManager
         var journal = operationJournal ?? new InMemoryOperationJournal();
         var pathFactory = activationPathFactory
             ?? DefaultStableActivationPathFactory.Instance;
+        var link = activationLink ?? new WindowsJunctionActivationLink();
+        var runtimeHealthCheck = healthCheck ?? new ProcessRuntimeHealthCheck();
+        _operationJournal = journal;
 
         _inspector = new EnvironmentInspector(
             probe,
@@ -41,6 +49,13 @@ public sealed class EnvironmentManager
             recoveryStore,
             journal,
             pathFactory,
+            clock);
+        _switcher = new VersionSwitcher(
+            store,
+            recoveryStore,
+            journal,
+            link,
+            runtimeHealthCheck,
             clock);
     }
 
@@ -71,6 +86,20 @@ public sealed class EnvironmentManager
         return _adopter.AdoptAsync(preview, cancellationToken);
     }
 
+    public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        return _switcher.PreviewAsync(fingerprint, cancellationToken);
+    }
+
+    public Task<OperationRecord> SwitchVersionAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        return _switcher.SwitchAsync(fingerprint, cancellationToken);
+    }
+
     public Task<int> RebuildEnvironmentIndexAsync(
         CancellationToken cancellationToken = default)
     {
@@ -81,8 +110,30 @@ public sealed class EnvironmentManager
         string operationId,
         CancellationToken cancellationToken = default)
     {
-        return _adopter.RollbackOperationAsync(
+        return RollbackOperationCoreAsync(operationId, cancellationToken);
+    }
+
+    private async Task<OperationRecord> RollbackOperationCoreAsync(
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var operation = await FindOperationAsync(
             operationId,
             cancellationToken);
+        return operation.Type == OperationType.Switch
+            ? await _switcher.RollbackAsync(operationId, cancellationToken)
+            : await _adopter.RollbackOperationAsync(
+                operationId,
+                cancellationToken);
+    }
+
+    private async Task<OperationRecord> FindOperationAsync(
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        return await _operationJournal.GetAsync(
+            operationId,
+            cancellationToken)
+            ?? throw new KeyNotFoundException("未找到操作记录。");
     }
 }

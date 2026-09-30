@@ -2,7 +2,8 @@ namespace AgentEnvManager.Core.Operations;
 
 public enum OperationType
 {
-    Adopt
+    Adopt,
+    Switch
 }
 
 public enum OperationState
