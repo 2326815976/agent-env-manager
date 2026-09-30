@@ -1,2 +1,8 @@
 # 一次性原型和本地验证产物
 .prototype-tmp/
+
+# .NET 构建产物
+**/bin/
+**/obj/
+.vs/
+TestResults/
