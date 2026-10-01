@@ -51,9 +51,13 @@ internal sealed class RecordingActivationLink : IEnvironmentActivationLink
 
     public bool ReturnNullOnGet { get; set; }
 
+    public int? ThrowBeforeSetNumber { get; set; }
+
     public string? LastSetTarget { get; set; }
 
     public List<string?> SetHistory { get; } = [];
+
+    private int _setCount;
 
     public Task<string?> GetTargetAsync(
         string activationPath,
@@ -72,6 +76,12 @@ internal sealed class RecordingActivationLink : IEnvironmentActivationLink
         string targetPath,
         CancellationToken cancellationToken = default)
     {
+        _setCount++;
+        if (ThrowBeforeSetNumber == _setCount)
+        {
+            throw new InvalidOperationException("模拟恢复激活点失败。");
+        }
+
         _targets[activationPath] = GetActivationTarget(targetPath);
         LastSetTarget = _targets[activationPath];
         SetHistory.Add(LastSetTarget);
@@ -115,11 +125,14 @@ internal sealed class RecordingRuntimeHealthCheck(
     Action? onCheck = null)
     : IRuntimeHealthCheck
 {
+    public string? LastManagedEntryPath { get; private set; }
+
     public Task<RuntimeHealthCheckResult> CheckAsync(
         EnvironmentManifest manifest,
         string activationPath,
         CancellationToken cancellationToken = default)
     {
+        LastManagedEntryPath = activationPath;
         onCheck?.Invoke();
         return Task.FromResult(new RuntimeHealthCheckResult(
             isHealthy,

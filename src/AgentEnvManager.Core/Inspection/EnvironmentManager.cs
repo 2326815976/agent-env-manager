@@ -5,6 +5,7 @@ using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
+using AgentEnvManager.Core.Runtimes;
 using AgentEnvManager.Core.Storage;
 
 namespace AgentEnvManager.Core.Inspection;
@@ -24,6 +25,10 @@ public sealed class EnvironmentManager
         _environmentVariableRecoveryPointStore;
     private readonly IReadOnlyDictionary<string, IAgentAdapter>
         _agentAdapters;
+    private readonly IReadOnlyList<RuntimeProviderDescriptor>
+        _runtimeProviders;
+    private readonly RuntimeInstallationService _runtimeInstallation;
+    private readonly CondaEnvironmentService _condaEnvironments;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -44,7 +49,10 @@ public sealed class EnvironmentManager
         IMigrationOccupancyProbe? migrationOccupancyProbe = null,
         IEnvironmentPathMover? environmentPathMover = null,
         IEnvironmentQuarantineStore? quarantineStore = null,
-        IRuntimeStateCatalog? runtimeStateCatalog = null)
+        IRuntimeStateCatalog? runtimeStateCatalog = null,
+        IEnumerable<IRuntimeProvider>? runtimeProviders = null,
+        IRuntimeCommandRunner? runtimeCommandRunner = null,
+        string? runtimeRoot = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -59,12 +67,25 @@ public sealed class EnvironmentManager
                 resolvedManagerPaths.StateRoot);
         var link = activationLink ?? new WindowsJunctionActivationLink();
         var runtimeHealthCheck = healthCheck ?? new ProcessRuntimeHealthCheck();
+        var runtimeCommand = runtimeCommandRunner
+            ?? new SystemRuntimeCommandRunner();
         _operationJournal = journal;
         _manifestStore = store;
         _agentAdapters = (agentAdapters ?? [])
             .ToDictionary(
                 adapter => adapter.Name,
                 StringComparer.OrdinalIgnoreCase);
+        var resolvedRuntimeProviders = (
+            runtimeProviders ?? [new PythonRuntimeProvider()])
+            .ToDictionary(
+                provider => provider.Descriptor.Id,
+                StringComparer.OrdinalIgnoreCase);
+        _runtimeProviders =
+        [
+            .. resolvedRuntimeProviders.Values.Select(
+                provider => provider.Descriptor),
+            CondaEnvironmentService.Descriptor
+        ];
         _recoveryPointStore = recoveryStore;
         _environmentVariableRecoveryPointStore =
             environmentVariableRecoveryPointStore
@@ -99,6 +120,21 @@ public sealed class EnvironmentManager
             link,
             runtimeHealthCheck,
             clock);
+        _runtimeInstallation = new RuntimeInstallationService(
+            resolvedRuntimeProviders,
+            runtimeCommand,
+            store,
+            recoveryStore,
+            journal,
+            pathFactory,
+            link,
+            environmentIndex,
+            _switcher,
+            runtimeRoot ?? Path.Combine(
+                resolvedManagerPaths.StateRoot,
+                "runtimes"),
+            clock);
+        _condaEnvironments = new CondaEnvironmentService(runtimeCommand);
         _migrator = new EnvironmentMigrator(
             store,
             recoveryStore,
@@ -132,6 +168,52 @@ public sealed class EnvironmentManager
         CancellationToken cancellationToken = default)
     {
         return _inspector.InspectAsync(cancellationToken);
+    }
+
+    public IReadOnlyList<RuntimeProviderDescriptor>
+        DescribeRuntimeProviders()
+    {
+        return _runtimeProviders;
+    }
+
+    public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
+        string providerId,
+        string version,
+        CancellationToken cancellationToken = default)
+    {
+        return _runtimeInstallation.PreviewAsync(
+            providerId,
+            version,
+            cancellationToken);
+    }
+
+    public Task<InstalledRuntime> InstallRuntimeAsync(
+        RuntimeInstallPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _runtimeInstallation.InstallAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<ObservedCondaEnvironment>>
+        InspectCondaEnvironmentsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _condaEnvironments.ListAsync(cancellationToken);
+    }
+
+    public Task<CondaRebuildPlan> ExportCondaEnvironmentAsync(
+        string prefix,
+        string definitionPath,
+        string? targetPrefix = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _condaEnvironments.ExportAsync(
+            prefix,
+            definitionPath,
+            targetPrefix,
+            cancellationToken);
     }
 
     public Task<AdoptionPreview> PreviewAdoptionAsync(
@@ -471,6 +553,10 @@ public sealed class EnvironmentManager
             cancellationToken);
         return operation.Type switch
         {
+            OperationType.Install =>
+                await _runtimeInstallation.RollbackAsync(
+                    operationId,
+                    cancellationToken),
             OperationType.Switch => await _switcher.RollbackAsync(
                 operationId,
                 cancellationToken),

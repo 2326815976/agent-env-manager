@@ -3,6 +3,7 @@ namespace AgentEnvManager.Core.Operations;
 public enum OperationType
 {
     Adopt,
+    Install,
     Switch,
     Migrate,
     Delete,
