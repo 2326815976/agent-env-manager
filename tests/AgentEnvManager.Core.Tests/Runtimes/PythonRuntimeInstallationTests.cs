@@ -365,6 +365,70 @@ public sealed class PythonRuntimeInstallationTests
     }
 
     [Fact]
+    public async Task InstallRuntimeAsync_activates_existing_runtime_after_location_changed()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var manifestStore = new InMemoryManifestStore();
+            var journal = new RecordingOperationJournal();
+            var recoveryStore = new RecordingRecoveryPointStore();
+            var link = new RecordingActivationLink();
+            var runner = new RecordingRuntimeCommandRunner(invocation =>
+            {
+                var executable = Path.Combine(
+                    invocation.WorkingDirectory,
+                    "cpython-3.13.7-windows-x86_64-none",
+                    "python.exe");
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(executable)!);
+                File.WriteAllText(executable, string.Empty);
+                return new RuntimeCommandResult(0, "installed", string.Empty);
+            });
+            var manager = CreateManager(
+                root,
+                manifestStore,
+                journal,
+                recoveryStore,
+                link,
+                runner);
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                "python",
+                "3.13.7");
+            var installed = await manager.InstallRuntimeAsync(preview);
+            var migratedRoot = Path.Combine(root, "migrated", "3.13.7");
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(migratedRoot)!);
+            Directory.Move(preview.InstallRoot, migratedRoot);
+            var migratedLocation = Path.Combine(
+                migratedRoot,
+                "cpython-3.13.7-windows-x86_64-none");
+            await manifestStore.SaveAsync(
+                installed.Manifest with { Location = migratedLocation });
+            await link.SetTargetAsync(
+                preview.StableActivationPath,
+                migratedLocation);
+
+            var existingPreview = await manager.PreviewRuntimeInstallAsync(
+                "python",
+                "3.13.7");
+            var activated = await manager.InstallRuntimeAsync(
+                existingPreview);
+
+            Assert.True(existingPreview.IsAlreadyInstalled);
+            Assert.Equal(migratedLocation, activated.Manifest.Location);
+            Assert.Equal(
+                migratedLocation,
+                await link.GetTargetAsync(
+                    preview.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RollbackOperationAsync_removes_interrupted_install()
     {
         var root = CreateTempRoot();
@@ -492,6 +556,7 @@ public sealed class PythonRuntimeInstallationTests
             "Python",
             EnvironmentAssetKind.ToolRuntime,
             RuntimeProviderMode.Installable,
+            DiscoverySourceInfo.RuntimeProvider,
             "https://example.test/python",
             "PSF-2.0",
             RuntimeInstallStrategy.UvManagedDownload,

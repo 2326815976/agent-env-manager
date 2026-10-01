@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Runtimes;
 using AgentEnvManager.Core.Storage;
+using AgentEnvManager.Core.Tests.TestSupport;
 
 namespace AgentEnvManager.Core.Tests.Runtimes;
 
@@ -18,6 +19,7 @@ public sealed class RuntimeProviderTests
             provider => provider.Id == "python");
         Assert.Equal(RuntimeProviderMode.Installable, python.Mode);
         Assert.Equal(EnvironmentAssetKind.ToolRuntime, python.Kind);
+        Assert.Equal(DiscoverySourceInfo.UvRuntime, python.Source);
         Assert.Equal(
             "https://github.com/astral-sh/python-build-standalone",
             python.OfficialSource);
@@ -69,6 +71,62 @@ public sealed class RuntimeProviderTests
             Assert.Equal(
                 RuntimeInstallStrategy.OfficialArchive,
                 preview.Artifact.InstallStrategy);
+            Assert.Equal(
+                DiscoverySourceInfo.RuntimeProvider,
+                preview.Provider.Source);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task InstallRuntimeAsync_preserves_provider_source_in_manifest()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-env-manager-provider-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var provider = new ArchiveTestProvider();
+            var manager = new EnvironmentManager(
+                new StubEnvironmentProbe(
+                    new EnvironmentProbeResult([], [])),
+                manifestStore: new InMemoryManifestStore(),
+                recoveryPointStore: new RecordingRecoveryPointStore(),
+                operationJournal: new RecordingOperationJournal(),
+                activationLink: new RecordingActivationLink(),
+                healthCheck: new RecordingRuntimeHealthCheck(
+                    isHealthy: true),
+                managerPaths: ManagerPaths.Resolve(root),
+                runtimeRoot: Path.Combine(root, "runtimes"),
+                runtimeProviders: [provider],
+                runtimeCommandRunner: new RecordingRuntimeCommandRunner(
+                    invocation =>
+                    {
+                        var executable = Path.Combine(
+                            invocation.WorkingDirectory,
+                            "bin",
+                            "tool.exe");
+                        Directory.CreateDirectory(
+                            Path.GetDirectoryName(executable)!);
+                        File.WriteAllText(executable, string.Empty);
+                        return new RuntimeCommandResult(
+                            0,
+                            string.Empty,
+                            string.Empty);
+                    }));
+
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                provider.Descriptor.Id,
+                "1.0.0");
+            var installed = await manager.InstallRuntimeAsync(preview);
+
+            Assert.Equal(
+                DiscoverySourceInfo.RuntimeProvider,
+                installed.Manifest.Source);
         }
         finally
         {
@@ -100,6 +158,7 @@ public sealed class RuntimeProviderTests
             "Archive Tool",
             EnvironmentAssetKind.ToolRuntime,
             RuntimeProviderMode.Installable,
+            DiscoverySourceInfo.RuntimeProvider,
             "https://example.test/archive-tool",
             "MIT",
             RuntimeInstallStrategy.OfficialArchive,

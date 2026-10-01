@@ -2,6 +2,7 @@ namespace AgentEnvManager.Core.Storage;
 
 public sealed record ManagerPaths(
     string StateRoot,
+    string DataRoot,
     string ManifestDirectory,
     string RecoveryDirectory,
     string EnvironmentVariableRecoveryDirectory,
@@ -9,9 +10,12 @@ public sealed record ManagerPaths(
     string ShimDirectory,
     string AgentBackupDirectory,
     string QuarantineDirectory,
-    string DatabasePath)
+    string DatabasePath,
+    string RuntimeDirectory)
 {
-    public static ManagerPaths Resolve(string? stateRoot = null)
+    public static ManagerPaths Resolve(
+        string? stateRoot = null,
+        string? dataRoot = null)
     {
         var resolvedRoot = string.IsNullOrWhiteSpace(stateRoot)
             ? Path.Combine(
@@ -19,8 +23,12 @@ public sealed record ManagerPaths(
                     Environment.SpecialFolder.LocalApplicationData),
                 "AgentEnvManager")
             : Path.GetFullPath(stateRoot);
+        var resolvedDataRoot = string.IsNullOrWhiteSpace(dataRoot)
+            ? Path.Combine(resolvedRoot, "data")
+            : Path.GetFullPath(dataRoot);
         return new ManagerPaths(
             resolvedRoot,
+            resolvedDataRoot,
             Path.Combine(resolvedRoot, "manifests"),
             Path.Combine(resolvedRoot, "recovery"),
             Path.Combine(resolvedRoot, "recovery", "environment-variables"),
@@ -28,6 +36,7 @@ public sealed record ManagerPaths(
             Path.Combine(resolvedRoot, "shims"),
             Path.Combine(resolvedRoot, "agent-backups"),
             Path.Combine(resolvedRoot, "quarantine"),
-            Path.Combine(resolvedRoot, "index", "environments.db"));
+            Path.Combine(resolvedRoot, "index", "environments.db"),
+            Path.Combine(resolvedDataRoot, "runtimes"));
     }
 }

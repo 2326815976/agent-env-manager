@@ -57,7 +57,7 @@ internal sealed class RuntimeInstallationService(
             artifact.Version,
             location,
             IsSystemComponent: false,
-            DiscoverySourceInfo.UvRuntime);
+            provider.Descriptor.Source);
         var activationKey = RuntimeActivationKey.Create(asset);
         var stableActivationPath = activationPathFactory.Create(
             activationKey);
@@ -162,7 +162,11 @@ internal sealed class RuntimeInstallationService(
     {
         var provider = GetProvider(preview.Provider.Id);
         var artifact = GetArtifact(provider, preview.Artifact.Version);
-        ValidatePreview(provider, artifact, preview);
+        await ValidatePreviewAsync(
+            provider,
+            artifact,
+            preview,
+            cancellationToken);
 
         if (preview.IsAlreadyInstalled)
         {
@@ -523,7 +527,7 @@ internal sealed class RuntimeInstallationService(
             preview.Provider.Kind,
             preview.Provider.Name,
             preview.Artifact.Version,
-            DiscoverySourceInfo.UvRuntime,
+            preview.Provider.Source,
             preview.Location,
             preview.StableActivationPath,
             preview.Artifact.Sha256,
@@ -725,12 +729,23 @@ internal sealed class RuntimeInstallationService(
                 $"不支持版本 {version}。");
     }
 
-    private void ValidatePreview(
+    private async Task ValidatePreviewAsync(
         IRuntimeProvider provider,
         RuntimeArtifactDescriptor artifact,
-        RuntimeInstallPreview preview)
+        RuntimeInstallPreview preview,
+        CancellationToken cancellationToken)
     {
         ValidateArtifact(provider.Descriptor, artifact);
+        if (preview.IsAlreadyInstalled)
+        {
+            await ValidateExistingPreviewAsync(
+                provider,
+                artifact,
+                preview,
+                cancellationToken);
+            return;
+        }
+
         var expectedFingerprint = CreateFingerprint(
             provider.Descriptor.Id,
             artifact.Version);
@@ -754,7 +769,7 @@ internal sealed class RuntimeInstallationService(
             artifact.Version,
             expectedLocation,
             IsSystemComponent: false,
-            DiscoverySourceInfo.UvRuntime);
+            provider.Descriptor.Source);
         var expectedActivationKey = RuntimeActivationKey.Create(
             expectedAsset);
         var expectedStableActivationPath = activationPathFactory.Create(
@@ -777,6 +792,55 @@ internal sealed class RuntimeInstallationService(
             || !PathsEqual(
                 preview.ManagedEntryPath,
                 expectedManagedEntryPath))
+        {
+            throw new InvalidOperationException(
+                "安装计划已过期，请重新预览。");
+        }
+    }
+
+    private async Task ValidateExistingPreviewAsync(
+        IRuntimeProvider provider,
+        RuntimeArtifactDescriptor artifact,
+        RuntimeInstallPreview preview,
+        CancellationToken cancellationToken)
+    {
+        var manifest = await manifestStore.FindByFingerprintAsync(
+            preview.Fingerprint,
+            cancellationToken)
+            ?? throw new InvalidOperationException(
+                "安装计划已过期，请重新预览。");
+        var executableName = Path.GetFileName(
+            provider.GetExecutableRelativePath(artifact));
+        if (manifest.Identity != preview.Identity
+            || manifest.Fingerprint != preview.Fingerprint
+            || manifest.Kind != provider.Descriptor.Kind
+            || !string.Equals(
+                manifest.Name,
+                provider.Descriptor.Name,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                manifest.Version,
+                artifact.Version,
+                StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                manifest.AssetHash,
+                artifact.Sha256,
+                StringComparison.Ordinal)
+            || !PathsEqual(manifest.Location, preview.Location)
+            || !PathsEqual(
+                Path.Combine(manifest.Location, executableName),
+                preview.ExecutablePath)
+            || !string.Equals(
+                manifest.ActivationIdentity,
+                preview.ActivationIdentity,
+                StringComparison.Ordinal)
+            || !PathsEqual(
+                manifest.StableActivationPath,
+                preview.StableActivationPath)
+            || !PathsEqual(
+                manifest.ManagedEntryPath,
+                preview.ManagedEntryPath)
+            || !Directory.Exists(manifest.Location))
         {
             throw new InvalidOperationException(
                 "安装计划已过期，请重新预览。");

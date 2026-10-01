@@ -19,6 +19,7 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
         "Python",
         EnvironmentAssetKind.ToolRuntime,
         RuntimeProviderMode.Installable,
+        DiscoverySourceInfo.UvRuntime,
         OfficialSource,
         "PSF-2.0",
         RuntimeInstallStrategy.UvManagedDownload,

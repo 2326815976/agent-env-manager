@@ -130,9 +130,7 @@ public sealed class EnvironmentManager
             link,
             environmentIndex,
             _switcher,
-            runtimeRoot ?? Path.Combine(
-                resolvedManagerPaths.StateRoot,
-                "runtimes"),
+            runtimeRoot ?? resolvedManagerPaths.RuntimeDirectory,
             clock);
         _condaEnvironments = new CondaEnvironmentService(runtimeCommand);
         _migrator = new EnvironmentMigrator(

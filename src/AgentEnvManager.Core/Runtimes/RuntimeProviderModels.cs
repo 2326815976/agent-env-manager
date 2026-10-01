@@ -30,6 +30,7 @@ public sealed record RuntimeProviderDescriptor(
     string Name,
     EnvironmentAssetKind Kind,
     RuntimeProviderMode Mode,
+    DiscoverySourceInfo Source,
     string OfficialSource,
     string License,
     RuntimeInstallStrategy InstallStrategy,

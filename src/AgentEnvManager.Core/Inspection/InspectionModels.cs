@@ -36,7 +36,8 @@ public enum DiscoverySource
     KnownInstallation,
     AppPathsRegistry,
     AgentConfiguration,
-    UvRuntime
+    UvRuntime,
+    RuntimeProvider
 }
 
 public sealed record DiscoverySourceInfo(
@@ -60,6 +61,9 @@ public sealed record DiscoverySourceInfo(
 
     public static DiscoverySourceInfo UvRuntime { get; } =
         new(DiscoverySource.UvRuntime, "uv 运行时目录");
+
+    public static DiscoverySourceInfo RuntimeProvider { get; } =
+        new(DiscoverySource.RuntimeProvider, "运行时提供者");
 }
 
 public sealed record EnvironmentAsset(

@@ -14,6 +14,7 @@ public sealed class CondaEnvironmentService(
         "Conda",
         EnvironmentAssetKind.PackageManager,
         RuntimeProviderMode.ObservedOnly,
+        DiscoverySourceInfo.RuntimeProvider,
         OfficialSource,
         "BSD-3-Clause",
         RuntimeInstallStrategy.ObservedRebuild,

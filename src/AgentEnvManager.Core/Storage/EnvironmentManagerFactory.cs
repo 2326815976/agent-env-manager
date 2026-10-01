@@ -11,13 +11,18 @@ public static class EnvironmentManagerFactory
 {
     public static EnvironmentManager CreateDefault()
     {
-        return Create(Environment.GetEnvironmentVariable(
-            "AGENT_ENV_MANAGER_HOME"));
+        return Create(
+            Environment.GetEnvironmentVariable(
+                "AGENT_ENV_MANAGER_HOME"),
+            Environment.GetEnvironmentVariable(
+                "AGENT_ENV_MANAGER_DATA_ROOT"));
     }
 
-    public static EnvironmentManager Create(string? stateRoot = null)
+    public static EnvironmentManager Create(
+        string? stateRoot = null,
+        string? dataRoot = null)
     {
-        var paths = ManagerPaths.Resolve(stateRoot);
+        var paths = ManagerPaths.Resolve(stateRoot, dataRoot);
         return new EnvironmentManager(
             new WindowsEnvironmentProbe(
                 new WindowsEnvironmentSnapshotSource()),
