@@ -159,6 +159,20 @@ public sealed class RuntimeArtifactCacheTests
             Assert.Equal(
                 imported.Path,
                 provider.LastContext?.CachedArtifactPath);
+            var importOperation = Assert.Single(
+                journal.History
+                    .Where(record =>
+                        record.Id == imported.OperationId)
+                    .GroupBy(record => record.Id)
+                    .Select(group => group.Last()));
+            Assert.Equal(
+                OperationType.ArtifactImport,
+                importOperation.Type);
+            Assert.Equal(
+                OperationState.Succeeded,
+                importOperation.State);
+            Assert.Equal(imported.Path, importOperation.ArtifactCachePath);
+            Assert.Equal(artifact.Sha256, importOperation.ArtifactSha256);
             Assert.Equal("Cache", operation.ArtifactSource);
             Assert.Equal(imported.Path, operation.ArtifactCachePath);
             Assert.Equal(artifact.Sha256, operation.ArtifactSha256);
@@ -168,6 +182,132 @@ public sealed class RuntimeArtifactCacheTests
                 StringComparison.Ordinal);
             Assert.Empty(downloader.Urls);
             Assert.Equal("Test Tool", installed.Manifest.Name);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task InstallAsync_records_mirror_verification_failure()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var artifact = CreateArtifact(
+                Encoding.UTF8.GetBytes("expected artifact"));
+            var provider = new TestArchiveProvider(artifact);
+            var journal = new RecordingOperationJournal();
+            var manager = new EnvironmentManager(
+                new StubEnvironmentProbe(
+                    new EnvironmentProbeResult([], [])),
+                manifestStore: new InMemoryManifestStore(),
+                recoveryPointStore: new RecordingRecoveryPointStore(),
+                operationJournal: journal,
+                activationLink: new RecordingActivationLink(),
+                healthCheck: new RecordingRuntimeHealthCheck(
+                    isHealthy: true),
+                managerPaths: ManagerPaths.Resolve(root),
+                runtimeRoot: Path.Combine(root, "runtimes"),
+                runtimeProviders: [provider],
+                runtimeCommandRunner: new RecordingRuntimeCommandRunner(_ =>
+                    new RuntimeCommandResult(0, string.Empty, string.Empty)),
+                artifactCache: new FailingArtifactCache(
+                    "镜像制品哈希不匹配"));
+            const string mirrorUrl = "https://mirror.test/tool.zip";
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                provider.Descriptor.Id,
+                "1.0.0",
+                mirrorUrl);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.InstallRuntimeAsync(preview));
+
+            var operation = Assert.Single(
+                journal.History
+                    .Where(record =>
+                        record.Id == preview.OperationId)
+                    .GroupBy(record => record.Id)
+                    .Select(group => group.Last()));
+            Assert.Contains(
+                "哈希不匹配",
+                operation.FailureReason,
+                StringComparison.Ordinal);
+            Assert.Equal("Mirror", operation.ArtifactSource);
+            Assert.Equal(mirrorUrl, operation.MirrorUrl);
+            Assert.Contains(
+                "校验失败",
+                operation.VerificationResult,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Python_uses_cached_archive_offline_when_imported()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var provider = new PythonRuntimeProvider();
+            var cachedArtifactPath = Path.Combine(
+                root,
+                "cache",
+                "python.tar.gz");
+            var journal = new RecordingOperationJournal();
+            var runner = new RecordingRuntimeCommandRunner(invocation =>
+            {
+                Assert.Equal("tar.exe", invocation.Executable);
+                Assert.Contains(
+                    cachedArtifactPath,
+                    invocation.Arguments);
+                var executable = Path.Combine(
+                    invocation.WorkingDirectory,
+                    "python",
+                    "python.exe");
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(executable)!);
+                File.WriteAllText(executable, string.Empty);
+                return new RuntimeCommandResult(0, string.Empty, string.Empty);
+            });
+            var manager = new EnvironmentManager(
+                new StubEnvironmentProbe(
+                    new EnvironmentProbeResult([], [])),
+                manifestStore: new InMemoryManifestStore(),
+                recoveryPointStore: new RecordingRecoveryPointStore(),
+                operationJournal: journal,
+                activationLink: new RecordingActivationLink(),
+                healthCheck: new RecordingRuntimeHealthCheck(
+                    isHealthy: true),
+                managerPaths: ManagerPaths.Resolve(root),
+                runtimeRoot: Path.Combine(root, "runtimes"),
+                runtimeProviders: [provider],
+                runtimeCommandRunner: runner,
+                artifactCache: new FixedArtifactCache(cachedArtifactPath));
+
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                provider.Descriptor.Id,
+                "3.13.7");
+            var installed = await manager.InstallRuntimeAsync(preview);
+
+            Assert.True(preview.IsCachedArtifactAvailable);
+            Assert.EndsWith(
+                Path.Combine("python", "python.exe"),
+                installed.ExecutablePath);
+            Assert.EndsWith(
+                "python",
+                installed.Manifest.Location);
+            var operation = Assert.Single(
+                journal.History
+                    .Where(record =>
+                        record.Id == preview.OperationId)
+                    .GroupBy(record => record.Id)
+                    .Select(group => group.Last()));
+            Assert.Equal("Cache", operation.ArtifactSource);
         }
         finally
         {
@@ -240,7 +380,8 @@ public sealed class RuntimeArtifactCacheTests
         }
 
         public string GetExecutableRelativePath(
-            RuntimeArtifactDescriptor artifact)
+            RuntimeArtifactDescriptor artifact,
+            bool fromCache = false)
         {
             return Path.Combine("bin", "tool.exe");
         }

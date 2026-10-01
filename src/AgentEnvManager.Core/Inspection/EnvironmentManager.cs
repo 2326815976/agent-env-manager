@@ -31,6 +31,8 @@ public sealed class EnvironmentManager
         _runtimeProviders;
     private readonly RuntimeInstallationService _runtimeInstallation;
     private readonly IRuntimeArtifactCache _artifactCache;
+    private readonly string _artifactCacheDirectory;
+    private readonly TimeProvider _timeProvider;
     private readonly CondaEnvironmentService _condaEnvironments;
     private readonly IRuntimeStateCatalog _runtimeStateCatalog;
     private readonly IGitConfigurationBackupService
@@ -63,6 +65,7 @@ public sealed class EnvironmentManager
         IRuntimeArtifactCache? artifactCache = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
+        _timeProvider = clock;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
         var environmentIndex = index ?? new InMemoryEnvironmentIndex();
         var hasher = assetHasher ?? new FileSystemEnvironmentAssetHasher();
@@ -110,6 +113,8 @@ public sealed class EnvironmentManager
             ?? new RuntimeArtifactCache(
                 resolvedManagerPaths.ArtifactCacheDirectory,
                 new HttpArtifactDownloader());
+        _artifactCacheDirectory =
+            resolvedManagerPaths.ArtifactCacheDirectory;
         _recoveryPointStore = recoveryStore;
         _environmentVariableRecoveryPointStore =
             environmentVariableRecoveryPointStore
@@ -235,7 +240,7 @@ public sealed class EnvironmentManager
             cancellationToken);
     }
 
-    public Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
+    public async Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
         string providerId,
         string version,
         string sourcePath,
@@ -256,10 +261,86 @@ public sealed class EnvironmentManager
                 StringComparison.OrdinalIgnoreCase))
             ?? throw new KeyNotFoundException(
                 $"运行时提供者 {providerId} 不支持版本 {version}。");
-        return _artifactCache.ImportAsync(
-            artifact,
-            sourcePath,
+        var operation = OperationStateMachine.Create(
+            OperationType.ArtifactImport,
+            $"导入 {provider.Descriptor.Name} {version} 制品",
+            _timeProvider,
+            target: sourcePath,
+            impact: $"校验 {sourcePath} 并写入制品缓存。",
+            expectedResult: "制品通过官方 SHA-256 校验并可从缓存复用。");
+        await _operationJournal.SaveAsync(operation, cancellationToken);
+        operation = await SaveOperationTransitionAsync(
+            OperationStateMachine.MarkValidated(operation, _timeProvider),
             cancellationToken);
+        var recoveryPointId = $"artifact-import-{operation.Id}";
+        operation = await SaveOperationTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                recoveryPointId,
+                _timeProvider),
+            cancellationToken);
+        try
+        {
+            operation = await SaveOperationTransitionAsync(
+                OperationStateMachine.BeginExecution(
+                    operation,
+                    _timeProvider),
+                cancellationToken);
+            var entry = await _artifactCache.ImportAsync(
+                artifact,
+                sourcePath,
+                cancellationToken);
+            operation = operation with
+            {
+                ArtifactSource = entry.Source.ToString(),
+                ArtifactCachePath = entry.Path,
+                ArtifactSha256 = entry.Sha256,
+                VerificationResult = entry.VerificationResult
+            };
+            operation = await SaveOperationTransitionAsync(
+                OperationStateMachine.BeginVerification(
+                    operation,
+                    _timeProvider),
+                cancellationToken);
+            if (!File.Exists(entry.Path))
+            {
+                throw new InvalidOperationException(
+                    "导入后的缓存制品不存在。");
+            }
+
+            operation = OperationStateMachine.Complete(
+                operation,
+                _timeProvider);
+            await _operationJournal.SaveAsync(
+                operation,
+                cancellationToken);
+            return entry with { OperationId = operation.Id };
+        }
+        catch (Exception exception)
+        {
+            operation = OperationStateMachine.Fail(
+                operation,
+                exception.Message,
+                _timeProvider);
+            await _operationJournal.SaveAsync(
+                operation,
+                CancellationToken.None);
+            operation = OperationStateMachine.Rollback(
+                operation,
+                _timeProvider);
+            await _operationJournal.SaveAsync(
+                operation,
+                CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task<OperationRecord> SaveOperationTransitionAsync(
+        OperationRecord operation,
+        CancellationToken cancellationToken)
+    {
+        await _operationJournal.SaveAsync(operation, cancellationToken);
+        return operation;
     }
 
     public Task<InstalledRuntime> InstallRuntimeAsync(
@@ -532,6 +613,18 @@ public sealed class EnvironmentManager
                 "Git 配置备份文件已删除。");
         }
 
+        if (operation.Type == OperationType.ArtifactImport)
+        {
+            return new OperationRollbackPlan(
+                operation.Id,
+                operation.ArtifactCachePath
+                    ?? throw new InvalidOperationException(
+                        "制品导入操作缺少缓存路径。"),
+                "删除导入的制品缓存文件。",
+                operation.RecoveryPointId,
+                "导入制品缓存文件已删除。");
+        }
+
         var recoveryPoint = await _recoveryPointStore.GetAsync(
             operation.RecoveryPointId,
             cancellationToken)
@@ -695,10 +788,83 @@ public sealed class EnvironmentManager
                 await _gitConfigurationBackup.RollbackAsync(
                     operationId,
                     cancellationToken),
+            OperationType.ArtifactImport =>
+                await RollbackArtifactImportAsync(
+                    operationId,
+                    cancellationToken),
             _ => await _adopter.RollbackOperationAsync(
                 operationId,
                 cancellationToken)
         };
+    }
+
+    private async Task<OperationRecord> RollbackArtifactImportAsync(
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var operation = await FindOperationAsync(
+            operationId,
+            cancellationToken);
+        if (operation.Type != OperationType.ArtifactImport)
+        {
+            throw new InvalidOperationException(
+                "该操作不是制品导入操作。");
+        }
+
+        if (operation.State is OperationState.Succeeded
+            or OperationState.RolledBack)
+        {
+            operation = OperationStateMachine.Reject(
+                operation,
+                OperationState.RolledBack,
+                "该操作当前状态不能回滚。",
+                _timeProvider);
+            await _operationJournal.SaveAsync(
+                operation,
+                CancellationToken.None);
+            throw new InvalidOperationException(
+                "该操作当前状态不能回滚。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(operation.ArtifactCachePath)
+            && File.Exists(operation.ArtifactCachePath))
+        {
+            var cachePath = Path.GetFullPath(
+                operation.ArtifactCachePath);
+            var cacheRoot = Path.GetFullPath(_artifactCacheDirectory);
+            var allowedRoot = cacheRoot.EndsWith(
+                Path.DirectorySeparatorChar)
+                ? cacheRoot
+                : cacheRoot + Path.DirectorySeparatorChar;
+            if (!cachePath.StartsWith(
+                allowedRoot,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "制品缓存路径无效。");
+            }
+
+            File.Delete(cachePath);
+        }
+
+        if (operation.State != OperationState.Failed)
+        {
+            operation = OperationStateMachine.Fail(
+                operation,
+                "用户请求回滚制品导入。",
+                _timeProvider);
+            await _operationJournal.SaveAsync(
+                operation,
+                cancellationToken);
+        }
+
+        operation = OperationStateMachine.Rollback(
+            operation,
+            _timeProvider);
+        await _operationJournal.SaveAsync(
+            operation,
+            cancellationToken);
+        return operation;
     }
 
     private async Task<OperationRecord> FindOperationAsync(

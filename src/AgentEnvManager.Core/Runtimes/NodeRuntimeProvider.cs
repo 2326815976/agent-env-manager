@@ -120,7 +120,8 @@ public sealed class NodeRuntimeProvider : IRuntimeProvider
     }
 
     public string GetExecutableRelativePath(
-        RuntimeArtifactDescriptor artifact)
+        RuntimeArtifactDescriptor artifact,
+        bool fromCache = false)
     {
         return Path.Combine(
             $"node-v{artifact.Version}-win-x64",

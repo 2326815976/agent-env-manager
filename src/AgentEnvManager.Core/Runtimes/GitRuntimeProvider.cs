@@ -91,7 +91,8 @@ public sealed class GitRuntimeProvider : IRuntimeProvider
     }
 
     public string GetExecutableRelativePath(
-        RuntimeArtifactDescriptor artifact)
+        RuntimeArtifactDescriptor artifact,
+        bool fromCache = false)
     {
         return "git.cmd";
     }

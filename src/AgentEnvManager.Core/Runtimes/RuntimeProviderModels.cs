@@ -70,7 +70,8 @@ public sealed record RuntimeInstallPreview(
     bool IsAlreadyInstalled,
     string? OperationId = null,
     string? RecoveryPointId = null,
-    string? MirrorUrl = null);
+    string? MirrorUrl = null,
+    bool IsCachedArtifactAvailable = false);
 
 public sealed record InstalledRuntime(
     RuntimeProviderDescriptor Provider,
@@ -87,7 +88,8 @@ public interface IRuntimeProvider
         RuntimeInstallContext context);
 
     string GetExecutableRelativePath(
-        RuntimeArtifactDescriptor artifact);
+        RuntimeArtifactDescriptor artifact,
+        bool fromCache = false);
 
     IReadOnlyList<RuntimeStateFile> CreateStateFiles(
         RuntimeStateBindingContext context);

@@ -17,7 +17,8 @@ public sealed record RuntimeArtifactCacheEntry(
     RuntimeArtifactSource Source,
     string SourceUrl,
     string? MirrorUrl,
-    string VerificationResult);
+    string VerificationResult,
+    string? OperationId = null);
 
 public interface IArtifactDownloader
 {
@@ -28,6 +29,10 @@ public interface IArtifactDownloader
 
 public interface IRuntimeArtifactCache
 {
+    Task<RuntimeArtifactCacheEntry?> TryGetCachedAsync(
+        RuntimeArtifactDescriptor artifact,
+        CancellationToken cancellationToken = default);
+
     Task<RuntimeArtifactCacheEntry> AcquireAsync(
         RuntimeArtifactDescriptor artifact,
         string? mirrorUrl,
@@ -63,34 +68,51 @@ public sealed class RuntimeArtifactCache(
     private readonly string _cacheRoot = Path.GetFullPath(cacheRoot);
     private readonly IArtifactDownloader _downloader = downloader;
 
+    public async Task<RuntimeArtifactCacheEntry?> TryGetCachedAsync(
+        RuntimeArtifactDescriptor artifact,
+        CancellationToken cancellationToken = default)
+    {
+        var cachePath = GetCachePath(artifact);
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        var cachedHash = await ComputeSha256Async(
+            cachePath,
+            cancellationToken);
+        if (!string.Equals(
+            cachedHash,
+            artifact.Sha256,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            File.Delete(cachePath);
+            return null;
+        }
+
+        return new RuntimeArtifactCacheEntry(
+            cachePath,
+            artifact.Sha256,
+            RuntimeArtifactSource.Cache,
+            artifact.DownloadUrl,
+            null,
+            "缓存制品通过官方 SHA-256 校验。");
+    }
+
     public async Task<RuntimeArtifactCacheEntry> AcquireAsync(
         RuntimeArtifactDescriptor artifact,
         string? mirrorUrl,
         CancellationToken cancellationToken = default)
     {
-        var cachePath = GetCachePath(artifact);
-        if (File.Exists(cachePath))
+        var cached = await TryGetCachedAsync(
+            artifact,
+            cancellationToken);
+        if (cached is not null)
         {
-            var cachedHash = await ComputeSha256Async(
-                cachePath,
-                cancellationToken);
-            if (string.Equals(
-                cachedHash,
-                artifact.Sha256,
-                StringComparison.OrdinalIgnoreCase))
-            {
-                return new RuntimeArtifactCacheEntry(
-                    cachePath,
-                    artifact.Sha256,
-                    RuntimeArtifactSource.Cache,
-                    artifact.DownloadUrl,
-                    null,
-                    "缓存制品通过官方 SHA-256 校验。");
-            }
-
-            File.Delete(cachePath);
+            return cached;
         }
 
+        var cachePath = GetCachePath(artifact);
         var sourceUrl = string.IsNullOrWhiteSpace(mirrorUrl)
             ? artifact.DownloadUrl
             : mirrorUrl;

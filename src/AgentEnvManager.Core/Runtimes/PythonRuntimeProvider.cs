@@ -37,6 +37,19 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
     public RuntimeInstallCommand CreateInstallCommand(
         RuntimeInstallContext context)
     {
+        if (!string.IsNullOrWhiteSpace(context.CachedArtifactPath))
+        {
+            return new RuntimeInstallCommand(
+                "tar.exe",
+                [
+                    "-xzf",
+                    context.CachedArtifactPath,
+                    "-C",
+                    context.InstallRoot
+                ],
+                context.InstallRoot);
+        }
+
         var arguments = new List<string>
         {
             "python",
@@ -60,8 +73,14 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
     }
 
     public string GetExecutableRelativePath(
-        RuntimeArtifactDescriptor artifact)
+        RuntimeArtifactDescriptor artifact,
+        bool fromCache = false)
     {
+        if (fromCache)
+        {
+            return Path.Combine("python", "python.exe");
+        }
+
         return Path.Combine(
             $"cpython-{artifact.Version}-windows-x86_64-none",
             "python.exe");

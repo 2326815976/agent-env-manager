@@ -320,7 +320,8 @@ public sealed class PowerShellRuntimeProviderTests
         }
 
         public string GetExecutableRelativePath(
-            RuntimeArtifactDescriptor artifact)
+            RuntimeArtifactDescriptor artifact,
+            bool fromCache = false)
         {
             return "pwsh.exe";
         }

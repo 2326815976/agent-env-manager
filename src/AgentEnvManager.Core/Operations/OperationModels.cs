@@ -10,7 +10,8 @@ public enum OperationType
     Purge,
     EnvironmentVariables,
     AgentBinding,
-    GitConfigurationBackup
+    GitConfigurationBackup,
+    ArtifactImport
 }
 
 public enum OperationState

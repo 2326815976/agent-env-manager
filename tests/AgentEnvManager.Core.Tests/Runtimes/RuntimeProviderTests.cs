@@ -204,7 +204,8 @@ public sealed class RuntimeProviderTests
         }
 
         public string GetExecutableRelativePath(
-            RuntimeArtifactDescriptor artifact)
+            RuntimeArtifactDescriptor artifact,
+            bool fromCache = false)
         {
             return Path.Combine("bin", "tool.exe");
         }

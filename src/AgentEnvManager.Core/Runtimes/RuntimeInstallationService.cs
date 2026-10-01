@@ -45,8 +45,14 @@ internal sealed class RuntimeInstallationService(
             runtimeRoot,
             provider.Descriptor.Id,
             artifact.Version);
+        var useCachedArtifact = artifact.InstallStrategy
+            == RuntimeInstallStrategy.UvManagedDownload
+            && await artifactCache.TryGetCachedAsync(
+                artifact,
+                cancellationToken) is not null;
         var executableRelativePath = provider.GetExecutableRelativePath(
-            artifact);
+            artifact,
+            useCachedArtifact);
         var location = Path.Combine(
             installRoot,
             Path.GetDirectoryName(executableRelativePath)
@@ -94,7 +100,8 @@ internal sealed class RuntimeInstallationService(
                 existing.ManagedEntryPath,
                 "该版本已安装并已纳管。",
                 isAlreadyInstalled: true,
-                mirrorUrl: mirrorUrl);
+                mirrorUrl: mirrorUrl,
+                isCachedArtifactAvailable: useCachedArtifact);
         }
 
         if (Directory.Exists(installRoot)
@@ -159,7 +166,8 @@ internal sealed class RuntimeInstallationService(
             isAlreadyInstalled: false,
             operation.Id,
             recoveryPoint.Id,
-            mirrorUrl);
+            mirrorUrl,
+            useCachedArtifact);
     }
 
     public async Task<InstalledRuntime> InstallAsync(
@@ -210,7 +218,15 @@ internal sealed class RuntimeInstallationService(
             installRootCreated = true;
             operation = operation with
             {
-                ArtifactSha256 = artifact.Sha256
+                ArtifactSha256 = artifact.Sha256,
+                ArtifactSource = artifact.InstallStrategy
+                    == RuntimeInstallStrategy.OfficialArchive
+                        ? (string.IsNullOrWhiteSpace(preview.MirrorUrl)
+                            ? RuntimeArtifactSource.Official.ToString()
+                            : RuntimeArtifactSource.Mirror.ToString())
+                        : "ProviderManaged",
+                MirrorUrl = preview.MirrorUrl,
+                VerificationResult = "等待制品下载与校验。"
             };
             RuntimeArtifactCacheEntry? cacheEntry = null;
             if (artifact.InstallStrategy
@@ -220,6 +236,16 @@ internal sealed class RuntimeInstallationService(
                     artifact,
                     preview.MirrorUrl,
                     cancellationToken);
+            }
+            else if (artifact.InstallStrategy
+                     == RuntimeInstallStrategy.UvManagedDownload
+                     && preview.IsCachedArtifactAvailable)
+            {
+                cacheEntry = await artifactCache.TryGetCachedAsync(
+                    artifact,
+                    cancellationToken)
+                    ?? throw new InvalidOperationException(
+                        "缓存的运行时制品已失效，请重新预览。");
             }
 
             operation = operation with
@@ -329,6 +355,17 @@ internal sealed class RuntimeInstallationService(
                 failureReason =
                     $"{failureReason}；清理失败安装失败: " +
                     cleanupException.Message;
+            }
+
+            if (string.Equals(
+                operation.VerificationResult,
+                "等待制品下载与校验。",
+                StringComparison.Ordinal))
+            {
+                operation = operation with
+                {
+                    VerificationResult = $"校验失败: {failureReason}"
+                };
             }
 
             operation = OperationStateMachine.Fail(
@@ -822,7 +859,10 @@ internal sealed class RuntimeInstallationService(
             provider.Descriptor.Id,
             artifact.Version);
         var executableRelativePath = provider.GetExecutableRelativePath(
-            artifact);
+            artifact,
+            preview.IsCachedArtifactAvailable
+                && artifact.InstallStrategy
+                    == RuntimeInstallStrategy.UvManagedDownload);
         var expectedLocation = Path.Combine(
             expectedInstallRoot,
             Path.GetDirectoryName(executableRelativePath)
@@ -980,7 +1020,8 @@ internal sealed class RuntimeInstallationService(
         bool isAlreadyInstalled,
         string? operationId = null,
         string? recoveryPointId = null,
-        string? mirrorUrl = null)
+        string? mirrorUrl = null,
+        bool isCachedArtifactAvailable = false)
     {
         return new RuntimeInstallPreview(
             provider,
@@ -997,7 +1038,8 @@ internal sealed class RuntimeInstallationService(
             isAlreadyInstalled,
             operationId,
             recoveryPointId,
-            mirrorUrl);
+            mirrorUrl,
+            isCachedArtifactAvailable);
     }
 
     private static bool PathsEqual(string left, string right)

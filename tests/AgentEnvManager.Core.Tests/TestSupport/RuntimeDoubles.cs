@@ -69,6 +69,20 @@ internal sealed class QueuedRuntimeHealthCheck(
 internal sealed class FixedArtifactCache(
     string path) : IRuntimeArtifactCache
 {
+    public Task<RuntimeArtifactCacheEntry?> TryGetCachedAsync(
+        RuntimeArtifactDescriptor artifact,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<RuntimeArtifactCacheEntry?>(
+            new RuntimeArtifactCacheEntry(
+                path,
+                artifact.Sha256,
+                RuntimeArtifactSource.Cache,
+                artifact.DownloadUrl,
+                null,
+                "测试缓存命中。"));
+    }
+
     public Task<RuntimeArtifactCacheEntry> AcquireAsync(
         RuntimeArtifactDescriptor artifact,
         string? mirrorUrl,
@@ -95,5 +109,32 @@ internal sealed class FixedArtifactCache(
             sourcePath,
             null,
             "测试离线导入。"));
+    }
+}
+
+internal sealed class FailingArtifactCache(
+    string message) : IRuntimeArtifactCache
+{
+    public Task<RuntimeArtifactCacheEntry?> TryGetCachedAsync(
+        RuntimeArtifactDescriptor artifact,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<RuntimeArtifactCacheEntry?>(null);
+    }
+
+    public Task<RuntimeArtifactCacheEntry> AcquireAsync(
+        RuntimeArtifactDescriptor artifact,
+        string? mirrorUrl,
+        CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException(message);
+    }
+
+    public Task<RuntimeArtifactCacheEntry> ImportAsync(
+        RuntimeArtifactDescriptor artifact,
+        string sourcePath,
+        CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException(message);
     }
 }
