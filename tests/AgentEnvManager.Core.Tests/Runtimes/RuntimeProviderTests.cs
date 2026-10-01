@@ -117,7 +117,9 @@ public sealed class RuntimeProviderTests
                             0,
                             string.Empty,
                             string.Empty);
-                    }));
+                    }),
+                artifactCache: new FixedArtifactCache(
+                    Path.Combine(root, "cached-tool.exe")));
 
             var preview = await manager.PreviewRuntimeInstallAsync(
                 provider.Descriptor.Id,
@@ -132,6 +134,25 @@ public sealed class RuntimeProviderTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void PythonProvider_uses_mirror_without_bypassing_uv_verification()
+    {
+        var provider = new PythonRuntimeProvider();
+        var artifact = Assert.Single(provider.Descriptor.Artifacts);
+        var command = provider.CreateInstallCommand(
+            new RuntimeInstallContext(
+                artifact,
+                Path.Combine(
+                    Path.GetTempPath(),
+                    "agent-env-manager-python-mirror"),
+                CachedArtifactPath: null,
+                MirrorUrl: "https://mirror.test/python"));
+
+        Assert.Contains("--mirror", command.Arguments);
+        Assert.Contains("https://mirror.test/python", command.Arguments);
+        Assert.Equal("uv", command.Executable);
     }
 
     private static EnvironmentManager CreateManager()

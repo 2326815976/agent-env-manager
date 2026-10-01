@@ -16,6 +16,7 @@ internal sealed class RuntimeInstallationService(
     IEnvironmentIndex environmentIndex,
     VersionSwitcher switcher,
     IRuntimeStateBinder stateBinder,
+    IRuntimeArtifactCache artifactCache,
     string runtimeRoot,
     string runtimeStateRoot,
     TimeProvider timeProvider)
@@ -23,6 +24,7 @@ internal sealed class RuntimeInstallationService(
     public async Task<RuntimeInstallPreview> PreviewAsync(
         string providerId,
         string version,
+        string? mirrorUrl,
         CancellationToken cancellationToken = default)
     {
         var provider = GetProvider(providerId);
@@ -91,7 +93,8 @@ internal sealed class RuntimeInstallationService(
                 existing.StableActivationPath,
                 existing.ManagedEntryPath,
                 "该版本已安装并已纳管。",
-                isAlreadyInstalled: true);
+                isAlreadyInstalled: true,
+                mirrorUrl: mirrorUrl);
         }
 
         if (Directory.Exists(installRoot)
@@ -155,7 +158,8 @@ internal sealed class RuntimeInstallationService(
             impact,
             isAlreadyInstalled: false,
             operation.Id,
-            recoveryPoint.Id);
+            recoveryPoint.Id,
+            mirrorUrl);
     }
 
     public async Task<InstalledRuntime> InstallAsync(
@@ -204,10 +208,37 @@ internal sealed class RuntimeInstallationService(
 
             Directory.CreateDirectory(preview.InstallRoot);
             installRootCreated = true;
+            operation = operation with
+            {
+                ArtifactSha256 = artifact.Sha256
+            };
+            RuntimeArtifactCacheEntry? cacheEntry = null;
+            if (artifact.InstallStrategy
+                == RuntimeInstallStrategy.OfficialArchive)
+            {
+                cacheEntry = await artifactCache.AcquireAsync(
+                    artifact,
+                    preview.MirrorUrl,
+                    cancellationToken);
+            }
+
+            operation = operation with
+            {
+                ArtifactSource = cacheEntry?.Source.ToString()
+                    ?? "ProviderManaged",
+                ArtifactCachePath = cacheEntry?.Path,
+                MirrorUrl = cacheEntry is null
+                    ? preview.MirrorUrl
+                    : cacheEntry.MirrorUrl,
+                VerificationResult = cacheEntry?.VerificationResult
+                    ?? "由提供者下载并校验。"
+            };
             var command = provider.CreateInstallCommand(
                 new RuntimeInstallContext(
                     artifact,
-                    preview.InstallRoot));
+                    preview.InstallRoot,
+                    cacheEntry?.Path,
+                    preview.MirrorUrl));
             var commandResult = await commandRunner.RunAsync(
                 command.Executable,
                 command.Arguments,
@@ -948,7 +979,8 @@ internal sealed class RuntimeInstallationService(
         string impact,
         bool isAlreadyInstalled,
         string? operationId = null,
-        string? recoveryPointId = null)
+        string? recoveryPointId = null,
+        string? mirrorUrl = null)
     {
         return new RuntimeInstallPreview(
             provider,
@@ -964,7 +996,8 @@ internal sealed class RuntimeInstallationService(
             impact,
             isAlreadyInstalled,
             operationId,
-            recoveryPointId);
+            recoveryPointId,
+            mirrorUrl);
     }
 
     private static bool PathsEqual(string left, string right)

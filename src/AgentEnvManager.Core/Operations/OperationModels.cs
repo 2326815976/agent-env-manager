@@ -41,7 +41,12 @@ public sealed record OperationRecord(
     string? TargetIdentity = null,
     string? SourceTarget = null,
     string? StableActivationPath = null,
-    string? MigrationStrategy = null);
+    string? MigrationStrategy = null,
+    string? ArtifactSource = null,
+    string? ArtifactCachePath = null,
+    string? ArtifactSha256 = null,
+    string? MirrorUrl = null,
+    string? VerificationResult = null);
 
 public sealed record OperationRollbackPlan(
     string OperationId,

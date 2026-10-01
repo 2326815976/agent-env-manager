@@ -245,7 +245,9 @@ public sealed class PowerShellRuntimeProviderTests
                 managerPaths: ManagerPaths.Resolve(root),
                 runtimeRoot: Path.Combine(root, "runtimes"),
                 runtimeProviders: [provider],
-                runtimeCommandRunner: runner);
+                runtimeCommandRunner: runner,
+                artifactCache: new FixedArtifactCache(
+                    Path.Combine(root, "cached-powershell.artifact")));
             var firstPreview = await manager.PreviewRuntimeInstallAsync(
                 provider.Descriptor.Id,
                 "7.6.5");

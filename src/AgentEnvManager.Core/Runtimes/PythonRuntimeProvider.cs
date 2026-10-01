@@ -37,17 +37,25 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
     public RuntimeInstallCommand CreateInstallCommand(
         RuntimeInstallContext context)
     {
+        var arguments = new List<string>
+        {
+            "python",
+            "install",
+            context.Artifact.Version,
+            "--install-dir",
+            context.InstallRoot,
+            "--no-bin",
+            "--no-registry"
+        };
+        if (!string.IsNullOrWhiteSpace(context.MirrorUrl))
+        {
+            arguments.Add("--mirror");
+            arguments.Add(context.MirrorUrl);
+        }
+
         return new RuntimeInstallCommand(
             "uv",
-            [
-                "python",
-                "install",
-                context.Artifact.Version,
-                "--install-dir",
-                context.InstallRoot,
-                "--no-bin",
-                "--no-registry"
-            ],
+            arguments,
             context.InstallRoot);
     }
 

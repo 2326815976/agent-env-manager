@@ -43,8 +43,16 @@ public sealed class PowerShellRuntimeProvider : IRuntimeProvider
             $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            $zipPath = Join-Path $PWD 'powershell.zip'
-            Invoke-WebRequest -UseBasicParsing -Uri {{PowerShellLiteral(artifact.DownloadUrl)}} -OutFile $zipPath
+            $cachedArtifact = {{PowerShellLiteral(context.CachedArtifactPath ?? string.Empty)}}
+            $downloaded = $false
+            if ([string]::IsNullOrWhiteSpace($cachedArtifact)) {
+                $zipPath = Join-Path $PWD 'powershell.zip'
+                Invoke-WebRequest -UseBasicParsing -Uri {{PowerShellLiteral(artifact.DownloadUrl)}} -OutFile $zipPath
+                $downloaded = $true
+            }
+            else {
+                $zipPath = $cachedArtifact
+            }
             $sha256 = [Security.Cryptography.SHA256]::Create()
             $stream = [IO.File]::OpenRead($zipPath)
             try {
@@ -60,7 +68,9 @@ public sealed class PowerShellRuntimeProvider : IRuntimeProvider
             }
 
             Expand-Archive -LiteralPath $zipPath -DestinationPath $PWD -Force
-            Remove-Item -LiteralPath $zipPath -Force
+            if ($downloaded) {
+                Remove-Item -LiteralPath $zipPath -Force
+            }
             """;
         var encodedCommand = Convert.ToBase64String(
             Encoding.Unicode.GetBytes(script));

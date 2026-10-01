@@ -13,7 +13,8 @@ public sealed record ManagerPaths(
     string DatabasePath,
     string RuntimeDirectory,
     string RuntimeStateDirectory,
-    string GitConfigurationBackupDirectory)
+    string GitConfigurationBackupDirectory,
+    string ArtifactCacheDirectory)
 {
     public static ManagerPaths Resolve(
         string? stateRoot = null,
@@ -41,6 +42,7 @@ public sealed record ManagerPaths(
             Path.Combine(resolvedRoot, "index", "environments.db"),
             Path.Combine(resolvedDataRoot, "runtimes"),
             Path.Combine(resolvedDataRoot, "runtime-state"),
-            Path.Combine(resolvedRoot, "git-config-backups"));
+            Path.Combine(resolvedRoot, "git-config-backups"),
+            Path.Combine(resolvedDataRoot, "artifact-cache"));
     }
 }

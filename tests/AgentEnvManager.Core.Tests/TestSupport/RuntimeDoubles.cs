@@ -65,3 +65,35 @@ internal sealed class QueuedRuntimeHealthCheck(
             healthy ? "健康" : "目标版本健康检查失败"));
     }
 }
+
+internal sealed class FixedArtifactCache(
+    string path) : IRuntimeArtifactCache
+{
+    public Task<RuntimeArtifactCacheEntry> AcquireAsync(
+        RuntimeArtifactDescriptor artifact,
+        string? mirrorUrl,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new RuntimeArtifactCacheEntry(
+            path,
+            artifact.Sha256,
+            RuntimeArtifactSource.Cache,
+            artifact.DownloadUrl,
+            mirrorUrl,
+            "测试缓存命中。"));
+    }
+
+    public Task<RuntimeArtifactCacheEntry> ImportAsync(
+        RuntimeArtifactDescriptor artifact,
+        string sourcePath,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new RuntimeArtifactCacheEntry(
+            path,
+            artifact.Sha256,
+            RuntimeArtifactSource.Imported,
+            sourcePath,
+            null,
+            "测试离线导入。"));
+    }
+}

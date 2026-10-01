@@ -25,9 +25,12 @@ public sealed class EnvironmentManager
         _environmentVariableRecoveryPointStore;
     private readonly IReadOnlyDictionary<string, IAgentAdapter>
         _agentAdapters;
+    private readonly IReadOnlyDictionary<string, IRuntimeProvider>
+        _runtimeProviderRegistry;
     private readonly IReadOnlyList<RuntimeProviderDescriptor>
         _runtimeProviders;
     private readonly RuntimeInstallationService _runtimeInstallation;
+    private readonly IRuntimeArtifactCache _artifactCache;
     private readonly CondaEnvironmentService _condaEnvironments;
     private readonly IRuntimeStateCatalog _runtimeStateCatalog;
     private readonly IGitConfigurationBackupService
@@ -56,7 +59,8 @@ public sealed class EnvironmentManager
         IEnumerable<IRuntimeProvider>? runtimeProviders = null,
         IRuntimeCommandRunner? runtimeCommandRunner = null,
         string? runtimeRoot = null,
-        IGitConfigurationBackupService? gitConfigurationBackupService = null)
+        IGitConfigurationBackupService? gitConfigurationBackupService = null,
+        IRuntimeArtifactCache? artifactCache = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -92,6 +96,7 @@ public sealed class EnvironmentManager
             .ToDictionary(
                 provider => provider.Descriptor.Id,
                 StringComparer.OrdinalIgnoreCase);
+        _runtimeProviderRegistry = resolvedRuntimeProviders;
         _runtimeProviders =
         [
             .. resolvedRuntimeProviders.Values.Select(
@@ -101,6 +106,10 @@ public sealed class EnvironmentManager
         var runtimeStateBinder = new ProviderRuntimeStateBinder(
             resolvedRuntimeProviders,
             resolvedRuntimeStateRoot);
+        _artifactCache = artifactCache
+            ?? new RuntimeArtifactCache(
+                resolvedManagerPaths.ArtifactCacheDirectory,
+                new HttpArtifactDownloader());
         _recoveryPointStore = recoveryStore;
         _environmentVariableRecoveryPointStore =
             environmentVariableRecoveryPointStore
@@ -147,6 +156,7 @@ public sealed class EnvironmentManager
             environmentIndex,
             _switcher,
             runtimeStateBinder,
+            _artifactCache,
             runtimeRoot ?? resolvedManagerPaths.RuntimeDirectory,
             resolvedRuntimeStateRoot,
             clock);
@@ -208,6 +218,47 @@ public sealed class EnvironmentManager
         return _runtimeInstallation.PreviewAsync(
             providerId,
             version,
+            mirrorUrl: null,
+            cancellationToken);
+    }
+
+    public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
+        string providerId,
+        string version,
+        string? mirrorUrl,
+        CancellationToken cancellationToken = default)
+    {
+        return _runtimeInstallation.PreviewAsync(
+            providerId,
+            version,
+            mirrorUrl,
+            cancellationToken);
+    }
+
+    public Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
+        string providerId,
+        string version,
+        string sourcePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_runtimeProviderRegistry.TryGetValue(
+            providerId,
+            out var provider))
+        {
+            throw new KeyNotFoundException(
+                $"未注册运行时提供者: {providerId}");
+        }
+
+        var artifact = provider.Descriptor.Artifacts.SingleOrDefault(
+            candidate => string.Equals(
+                candidate.Version,
+                version,
+                StringComparison.OrdinalIgnoreCase))
+            ?? throw new KeyNotFoundException(
+                $"运行时提供者 {providerId} 不支持版本 {version}。");
+        return _artifactCache.ImportAsync(
+            artifact,
+            sourcePath,
             cancellationToken);
     }
 

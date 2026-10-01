@@ -43,7 +43,9 @@ public sealed record RuntimeInstallCommand(
 
 public sealed record RuntimeInstallContext(
     RuntimeArtifactDescriptor Artifact,
-    string InstallRoot);
+    string InstallRoot,
+    string? CachedArtifactPath = null,
+    string? MirrorUrl = null);
 
 public sealed record RuntimeStateBindingContext(
     EnvironmentManifest Manifest,
@@ -67,7 +69,8 @@ public sealed record RuntimeInstallPreview(
     string Impact,
     bool IsAlreadyInstalled,
     string? OperationId = null,
-    string? RecoveryPointId = null);
+    string? RecoveryPointId = null,
+    string? MirrorUrl = null);
 
 public sealed record InstalledRuntime(
     RuntimeProviderDescriptor Provider,
