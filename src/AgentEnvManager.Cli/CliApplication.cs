@@ -69,6 +69,29 @@ public static class CliApplication
                 CliMessages.WriteRollback(rolledBack, Console.Out);
                 return 0;
 
+            case CliAction.DiagnosticsPreview:
+                var diagnosticPreview =
+                    await manager.PreviewDiagnosticPackageAsync(
+                        cancellationToken);
+                CliMessages.WriteDiagnosticPreview(
+                    diagnosticPreview,
+                    Console.Out);
+                return 0;
+
+            case CliAction.DiagnosticsExport:
+                var reviewedPreview =
+                    await manager.PreviewDiagnosticPackageAsync(
+                        cancellationToken);
+                var diagnosticResult =
+                    await manager.ExportDiagnosticPackageAsync(
+                        reviewedPreview,
+                        request.DestinationPath!,
+                        cancellationToken);
+                CliMessages.WriteDiagnosticExport(
+                    diagnosticResult,
+                    Console.Out);
+                return 0;
+
             default:
                 throw new InvalidOperationException("未知 CLI 操作。");
         }

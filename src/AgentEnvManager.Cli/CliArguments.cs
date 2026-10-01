@@ -7,6 +7,8 @@ internal enum CliAction
     Adopt,
     RebuildIndex,
     Rollback,
+    DiagnosticsPreview,
+    DiagnosticsExport,
     Help,
     Unknown
 }
@@ -15,6 +17,7 @@ internal sealed record CliRequest(
     CliAction Action,
     string? Fingerprint = null,
     string? OperationId = null,
+    string? DestinationPath = null,
     string? UnknownCommand = null);
 
 internal static class CliArguments
@@ -60,6 +63,18 @@ internal static class CliArguments
             return new CliRequest(
                 CliAction.Rollback,
                 OperationId: args[1]);
+        }
+
+        if (args[0] == "diagnostics-preview" && args.Count == 1)
+        {
+            return new CliRequest(CliAction.DiagnosticsPreview);
+        }
+
+        if (args[0] == "diagnostics-export" && args.Count == 2)
+        {
+            return new CliRequest(
+                CliAction.DiagnosticsExport,
+                DestinationPath: args[1]);
         }
 
         return new CliRequest(

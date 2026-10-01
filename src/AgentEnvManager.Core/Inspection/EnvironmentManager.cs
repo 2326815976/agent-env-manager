@@ -2,6 +2,7 @@ using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Deletion;
+using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -37,6 +38,7 @@ public sealed class EnvironmentManager
     private readonly IRuntimeStateCatalog _runtimeStateCatalog;
     private readonly IGitConfigurationBackupService
         _gitConfigurationBackup;
+    private readonly IDiagnosticPackageService _diagnosticPackage;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -62,7 +64,8 @@ public sealed class EnvironmentManager
         IRuntimeCommandRunner? runtimeCommandRunner = null,
         string? runtimeRoot = null,
         IGitConfigurationBackupService? gitConfigurationBackupService = null,
-        IRuntimeArtifactCache? artifactCache = null)
+        IRuntimeArtifactCache? artifactCache = null,
+        IDiagnosticPackageService? diagnosticPackageService = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -174,6 +177,14 @@ public sealed class EnvironmentManager
                     Environment.SpecialFolder.UserProfile),
                 resolvedManagerPaths.GitConfigurationBackupDirectory,
                 journal,
+                clock);
+        _diagnosticPackage = diagnosticPackageService
+            ?? new DiagnosticPackageService(
+                store,
+                journal,
+                recoveryStore,
+                _environmentVariableRecoveryPointStore,
+                resolvedManagerPaths,
                 clock);
         _migrator = new EnvironmentMigrator(
             store,
@@ -341,6 +352,23 @@ public sealed class EnvironmentManager
     {
         await _operationJournal.SaveAsync(operation, cancellationToken);
         return operation;
+    }
+
+    public Task<DiagnosticPackagePreview> PreviewDiagnosticPackageAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _diagnosticPackage.PreviewAsync(cancellationToken);
+    }
+
+    public Task<DiagnosticPackageResult> ExportDiagnosticPackageAsync(
+        DiagnosticPackagePreview preview,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        return _diagnosticPackage.ExportAsync(
+            preview,
+            destinationPath,
+            cancellationToken);
     }
 
     public Task<InstalledRuntime> InstallRuntimeAsync(
@@ -625,6 +653,18 @@ public sealed class EnvironmentManager
                 "导入制品缓存文件已删除。");
         }
 
+        if (operation.Type == OperationType.DiagnosticExport)
+        {
+            return new OperationRollbackPlan(
+                operation.Id,
+                operation.Target
+                    ?? throw new InvalidOperationException(
+                        "诊断包导出操作缺少目标。"),
+                "删除本地诊断包文件。",
+                operation.RecoveryPointId,
+                "诊断包文件已删除。");
+        }
+
         var recoveryPoint = await _recoveryPointStore.GetAsync(
             operation.RecoveryPointId,
             cancellationToken)
@@ -790,6 +830,10 @@ public sealed class EnvironmentManager
                     cancellationToken),
             OperationType.ArtifactImport =>
                 await RollbackArtifactImportAsync(
+                    operationId,
+                    cancellationToken),
+            OperationType.DiagnosticExport =>
+                await _diagnosticPackage.RollbackAsync(
                     operationId,
                     cancellationToken),
             _ => await _adopter.RollbackOperationAsync(

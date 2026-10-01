@@ -11,7 +11,8 @@ public enum OperationType
     EnvironmentVariables,
     AgentBinding,
     GitConfigurationBackup,
-    ArtifactImport
+    ArtifactImport,
+    DiagnosticExport
 }
 
 public enum OperationState
