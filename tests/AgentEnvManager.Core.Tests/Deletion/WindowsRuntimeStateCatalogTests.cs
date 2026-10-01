@@ -85,6 +85,42 @@ public sealed class WindowsRuntimeStateCatalogTests
                     StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task DescribeAsync_reports_powershell_modules_and_profile_separately()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-env-manager-powershell-state-tests-{Guid.NewGuid():N}");
+        var identity = "runtime-powershell-7.6.6-win-x64";
+        var stateDirectory = Path.Combine(
+            root,
+            identity,
+            "PowerShell");
+        var modulesDirectory = Path.Combine(stateDirectory, "Modules");
+        var profilePath = Path.Combine(stateDirectory, "profile.ps1");
+        var catalog = new WindowsRuntimeStateCatalog(root);
+
+        var state = await catalog.DescribeAsync(
+            CreatePowerShellManifest(identity));
+
+        Assert.Contains(
+            state,
+            entry => entry.Contains(
+                "模块目录",
+                StringComparison.Ordinal)
+                && entry.Contains(
+                    modulesDirectory,
+                    StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            state,
+            entry => entry.Contains(
+                "用户配置",
+                StringComparison.Ordinal)
+                && entry.Contains(
+                    profilePath,
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
     private static EnvironmentManifest CreateNodeManifest(string identity)
     {
         return new EnvironmentManifest(
@@ -123,5 +159,26 @@ public sealed class WindowsRuntimeStateCatalogTests
             DateTimeOffset.UnixEpoch,
             "git-activation",
             @"C:\shims\git");
+    }
+
+    private static EnvironmentManifest CreatePowerShellManifest(
+        string identity)
+    {
+        return new EnvironmentManifest(
+            new EnvironmentIdentity(identity),
+            new EnvironmentFingerprint(identity),
+            EnvironmentAssetKind.Shell,
+            "PowerShell 7",
+            "7.6.6",
+            DiscoverySourceInfo.RuntimeProvider,
+            @"D:\Runtimes\powershell\7.6.6",
+            @"C:\activations\powershell\current",
+            "asset-hash",
+            "recovery",
+            "install",
+            IsSystemComponent: false,
+            DateTimeOffset.UnixEpoch,
+            "powershell-activation",
+            @"C:\shims\powershell");
     }
 }

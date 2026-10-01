@@ -32,19 +32,7 @@ public sealed class WindowsRuntimeStateCatalog(
                 $"凭据文件: {Path.Combine(userProfile, ".git-credentials")}（敏感，不读取、不迁移、不备份）",
                 "凭据存储: Windows 凭据管理器（不读取、不迁移、不备份）"
             ],
-            "PowerShell 7" =>
-            [
-                $"模块目录: {Path.Combine(
-                    Environment.GetFolderPath(
-                        Environment.SpecialFolder.MyDocuments),
-                    "PowerShell",
-                    "Modules")}",
-                $"用户配置: {Path.Combine(
-                    Environment.GetFolderPath(
-                        Environment.SpecialFolder.MyDocuments),
-                    "PowerShell",
-                    "profile.ps1")}"
-            ],
+            "PowerShell 7" => DescribePowerShellState(manifest),
             _ => []
         };
         return Task.FromResult(state);
@@ -68,6 +56,22 @@ public sealed class WindowsRuntimeStateCatalog(
         [
             $"全局包: {globalPrefix}（受影响包: {packageSummary}）",
             $"缓存: {cacheDirectory}"
+        ];
+    }
+
+    private IReadOnlyList<string> DescribePowerShellState(
+        EnvironmentManifest manifest)
+    {
+        var versionStateRoot = RuntimeStateLayout.GetVersionStateDirectory(
+            runtimeStateRoot,
+            manifest.Identity.Value);
+        var stateDirectory = Path.Combine(
+            versionStateRoot,
+            "PowerShell");
+        return
+        [
+            $"模块目录: {PowerShellRuntimeStateLayout.GetModulesDirectory(stateDirectory)}",
+            $"用户配置: {PowerShellRuntimeStateLayout.GetProfilePath(stateDirectory)}"
         ];
     }
 

@@ -86,7 +86,8 @@ public sealed class EnvironmentManager
                 ?? [
                     new PythonRuntimeProvider(),
                     new NodeRuntimeProvider(),
-                    new GitRuntimeProvider()
+                    new GitRuntimeProvider(),
+                    new PowerShellRuntimeProvider()
                 ])
             .ToDictionary(
                 provider => provider.Descriptor.Id,

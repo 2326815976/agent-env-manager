@@ -82,7 +82,7 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
             "Git" => "git --version",
             "npm" => "npm --version",
             "PowerShell 7" =>
-                "pwsh -NoLogo -NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"",
+                "pwsh -NoLogo -NoProfile -NonInteractive -Command $PSVersionTable.PSVersion.ToString()",
             _ => null
         };
     }
