@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Diagnostics;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -229,5 +230,48 @@ internal sealed class FakeCliEnvironmentManager : ICliEnvironmentManager
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult(Operations);
+    }
+
+    public EnvironmentVariableEditorSnapshot EnvironmentVariableSnapshot
+    { get; set; } = null!;
+
+    public EnvironmentVariableUpdatePreview EnvironmentVariablePreview
+    { get; set; } = null!;
+
+    public EnvironmentVariableTransactionResult EnvironmentVariableResult
+    { get; set; } = null!;
+
+    public int VariableApplyCalls { get; private set; }
+
+    public IReadOnlyList<string>? LastManagedEntries { get; private set; }
+
+    public IReadOnlyList<EnvironmentVariableChange>? LastVariableChanges
+    { get; private set; }
+
+    public Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(EnvironmentVariableSnapshot);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default)
+    {
+        LastManagedEntries = managedEntries;
+        LastVariableChanges = variableChanges;
+        return Task.FromResult(EnvironmentVariablePreview);
+    }
+
+    public Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default)
+    {
+        VariableApplyCalls++;
+        return Task.FromResult(EnvironmentVariableResult);
     }
 }

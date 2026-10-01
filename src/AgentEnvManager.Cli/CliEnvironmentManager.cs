@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Diagnostics;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -90,6 +91,21 @@ internal interface ICliEnvironmentManager
 
     Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
         CancellationToken cancellationToken = default);
+
+    Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default);
+
+    Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default);
+
+    Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default);
 }
 
 internal sealed class EnvironmentManagerCliAdapter(
@@ -99,6 +115,36 @@ internal sealed class EnvironmentManagerCliAdapter(
         CancellationToken cancellationToken = default)
     {
         return manager.InspectAsync(cancellationToken);
+    }
+
+    public Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return manager.InspectEnvironmentVariableEditorAsync(
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewManagedEnvironmentUpdateAsync(
+            managedEntries,
+            variableChanges,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.ApplyEnvironmentVariableUpdateAsync(
+            preview,
+            cancellationToken);
     }
 
     public Task<AdoptionPreview> PreviewAdoptionAsync(

@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
 
@@ -175,6 +176,52 @@ public static class CliApplication
                     manager.DescribeRuntimeProviders(),
                     output);
                 return 0;
+
+            case CliAction.EnvironmentVariablesInspect:
+                var environmentSnapshot =
+                    await manager.InspectEnvironmentVariableEditorAsync(
+                        cancellationToken);
+                EnvironmentVariableReportRenderer.WriteSnapshot(
+                    environmentSnapshot,
+                    output,
+                    request.ShowSecrets);
+                return 0;
+
+            case CliAction.EnvironmentVariablesApply:
+                var plannedVariables =
+                    await manager.PreviewManagedEnvironmentUpdateAsync(
+                        string.IsNullOrWhiteSpace(
+                            request.ManagedPathEntry)
+                            ? null
+                            : [request.ManagedPathEntry],
+                        request.VariableName is null
+                            ? null
+                            : [
+                                new EnvironmentVariableChange(
+                                    request.VariableName,
+                                    request.VariableValue)
+                            ],
+                        cancellationToken);
+                return await ExecuteConfirmedPlanAsync(
+                    request.Confirmed,
+                    plannedVariables,
+                    (preview, writer) =>
+                        EnvironmentVariableReportRenderer.WritePreview(
+                            preview,
+                            writer),
+                    async (preview, token) =>
+                    {
+                        var applied =
+                            await manager.ApplyEnvironmentVariableUpdateAsync(
+                                preview,
+                                token);
+                        EnvironmentVariableReportRenderer.WriteResult(
+                            applied,
+                            output);
+                    },
+                    output,
+                    error,
+                    cancellationToken);
 
             case CliAction.RuntimeInstallPreview:
                 var installPreview =

@@ -15,6 +15,7 @@ public sealed class EnvironmentVariablesViewModel : AsyncOperationViewModel
     private string _newVariableValue = string.Empty;
     private string _previewImpact = string.Empty;
     private string _pendingRecoveryPoint = string.Empty;
+    private string _machineScopeNote = string.Empty;
 
     public EnvironmentVariablesViewModel(
         IEnvironmentVariablesClient client,
@@ -50,6 +51,18 @@ public sealed class EnvironmentVariablesViewModel : AsyncOperationViewModel
     { get; } = [];
 
     public ObservableCollection<ManagedVariableViewModel> Variables
+    { get; } = [];
+
+    public ObservableCollection<EnvironmentVariableRowViewModel>
+        ExternalVariables
+    { get; } = [];
+
+    public ObservableCollection<EnvironmentVariableRowViewModel>
+        MachineVariables
+    { get; } = [];
+
+    public ObservableCollection<ExternalPathEntryViewModel>
+        ExternalPathEntries
     { get; } = [];
 
     public ManagedVariableViewModel? SelectedVariable
@@ -94,6 +107,12 @@ public sealed class EnvironmentVariablesViewModel : AsyncOperationViewModel
         private set => SetProperty(ref _pendingRecoveryPoint, value);
     }
 
+    public string MachineScopeNote
+    {
+        get => _machineScopeNote;
+        private set => SetProperty(ref _machineScopeNote, value);
+    }
+
     public ICommand LoadCommand { get; }
 
     public ICommand PreviewCommand { get; }
@@ -110,20 +129,42 @@ public sealed class EnvironmentVariablesViewModel : AsyncOperationViewModel
         {
             var snapshot =
                 await _client.InspectEnvironmentVariableEditorAsync();
-            PathEntries.Replace(snapshot.PathEntries.Select(
+            PathEntries.Replace(snapshot.PathEntries
+                .Where(entry => entry.IsManaged)
+                .Select(
                 entry => new ManagedPathEntryViewModel(
                     entry,
                     ClearPendingPreview)));
-            Variables.Replace(snapshot.Variables.Select(
+            ExternalPathEntries.Replace(snapshot.PathEntries
+                .Where(entry => !entry.IsManaged)
+                .Select(entry =>
+                    new ExternalPathEntryViewModel(entry.ManagedEntryPath)));
+            Variables.Replace(snapshot.Variables
+                .Where(variable => variable.IsManaged)
+                .Select(
                 variable => new ManagedVariableViewModel(
                     variable,
                     ClearPendingPreview)));
+            ExternalVariables.Replace(snapshot.Variables
+                .Where(variable => !variable.IsManaged)
+                .Select(variable => new EnvironmentVariableRowViewModel(
+                    variable.Name,
+                    variable.Value,
+                    variable.IsHighRisk)));
+            MachineVariables.Replace(snapshot.MachineVariables.Select(
+                variable => new EnvironmentVariableRowViewModel(
+                    variable.Name,
+                    variable.Value,
+                    variable.IsHighRisk)));
+            MachineScopeNote = snapshot.MachineScopeDescription;
             _removedVariableNames.Clear();
             SelectedVariable = Variables.FirstOrDefault();
             ClearPendingPreview();
             StatusMessage =
                 $"已加载 {PathEntries.Count} 个受管入口和 " +
-                $"{Variables.Count} 个受管变量。";
+                $"{Variables.Count} 个受管变量，另有 " +
+                $"{ExternalVariables.Count} 个用户变量和 " +
+                $"{MachineVariables.Count} 个机器级变量为只读。";
         });
     }
 
@@ -292,6 +333,22 @@ public sealed class ManagedPathEntryViewModel : ObservableObject
             }
         }
     }
+}
+
+public sealed record ExternalPathEntryViewModel(string Entry)
+{
+    public string EditabilityLabel => "只读";
+}
+
+public sealed record EnvironmentVariableRowViewModel(
+    string Name,
+    string? Value,
+    bool IsHighRisk)
+{
+    public string ValueLabel => Value ?? string.Empty;
+
+    public string EditabilityLabel =>
+        IsHighRisk ? "只读（高风险）" : "只读";
 }
 
 public sealed class ManagedVariableViewModel : ObservableObject

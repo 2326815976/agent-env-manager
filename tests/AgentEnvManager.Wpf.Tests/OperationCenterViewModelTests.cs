@@ -67,6 +67,33 @@ public sealed class OperationCenterViewModelTests
     }
 
     [Fact]
+    public async Task RefreshAsync_allows_rollback_for_succeeded_variable_update()
+    {
+        var client = new StubClient
+        {
+            Operations =
+            [
+                new OperationRecord(
+                    "variables-1",
+                    OperationType.EnvironmentVariables,
+                    OperationState.Succeeded,
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch,
+                    "更新 1 个环境变量",
+                    "recovery-1",
+                    Target: "AGENT_ENV_MANAGER_MODE",
+                    Impact: "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。")
+            ]
+        };
+        var viewModel = new OperationCenterViewModel(client, client);
+        await viewModel.RefreshAsync();
+        var operation = Assert.Single(viewModel.Operations);
+
+        Assert.True(operation.CanRollback);
+        Assert.Equal("环境变量事务", operation.TypeLabel);
+    }
+
+    [Fact]
     public async Task RefreshAsync_allows_rollback_for_succeeded_migration()
     {
         var client = new StubClient();

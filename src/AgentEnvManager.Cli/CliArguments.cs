@@ -10,6 +10,8 @@ internal enum CliAction
     Rollback,
     DiagnosticsPreview,
     DiagnosticsExport,
+    EnvironmentVariablesInspect,
+    EnvironmentVariablesApply,
     RuntimeList,
     RuntimeInstallPreview,
     RuntimeInstall,
@@ -35,6 +37,10 @@ internal sealed record CliRequest(
     string? ArtifactPath = null,
     string? MirrorUrl = null,
     string? InstallRoot = null,
+    string? VariableName = null,
+    string? VariableValue = null,
+    string? ManagedPathEntry = null,
+    bool ShowSecrets = false,
     string? AgentName = null,
     string? ConfigurationDirectory = null,
     string? ExecutablePath = null,
@@ -96,6 +102,8 @@ internal static class CliArguments
                 value => new CliRequest(
                     CliAction.DiagnosticsExport,
                     DestinationPath: value)),
+            "env-vars" => ParseEnvironmentVariablesInspect(args),
+            "env-vars-apply" => ParseEnvironmentVariablesApply(args),
             "runtimes" => Exact(args, CliAction.RuntimeList),
             "runtime-install-preview" => ParseRuntimeInstall(
                 args,
@@ -220,6 +228,78 @@ internal static class CliArguments
             MirrorUrl: options.GetValueOrDefault("--mirror"),
             InstallRoot: options.GetValueOrDefault("--install-dir"),
             Confirmed: confirmed);
+    }
+
+    private static CliRequest ParseEnvironmentVariablesApply(
+        IReadOnlyList<string> args)
+    {
+        if (!TryParseOptions(
+            args,
+            1,
+            ["--set", "--managed-path"],
+            allowConfirm: true,
+            out var options,
+            out var confirmed,
+            out var error))
+        {
+            return Invalid(error!);
+        }
+
+        string? variableName = null;
+        string? variableValue = null;
+        if (options.TryGetValue("--set", out var assignment))
+        {
+            var separator = assignment.IndexOf('=');
+            if (separator <= 0)
+            {
+                return Invalid("--set 需要 NAME=VALUE 形式。");
+            }
+
+            variableName = assignment[..separator].Trim();
+            variableValue = assignment[(separator + 1)..];
+            if (variableName.Length == 0)
+            {
+                return Invalid("--set 需要 NAME=VALUE 形式。");
+            }
+        }
+
+        var managedPathEntry = options.GetValueOrDefault("--managed-path");
+        if (variableName is null
+            && string.IsNullOrWhiteSpace(managedPathEntry))
+        {
+            return Invalid(
+                "env-vars-apply 需要 --set 或 --managed-path。");
+        }
+
+        return new CliRequest(
+            CliAction.EnvironmentVariablesApply,
+            VariableName: variableName,
+            VariableValue: variableValue,
+            ManagedPathEntry: managedPathEntry,
+            Confirmed: confirmed);
+    }
+
+    private static CliRequest ParseEnvironmentVariablesInspect(
+        IReadOnlyList<string> args)
+    {
+        var showSecrets = false;
+        for (var index = 1; index < args.Count; index++)
+        {
+            if (string.Equals(
+                    args[index],
+                    "--show-secrets",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                showSecrets = true;
+                continue;
+            }
+
+            return Invalid($"无法识别参数: {args[index]}");
+        }
+
+        return new CliRequest(
+            CliAction.EnvironmentVariablesInspect,
+            ShowSecrets: showSecrets);
     }
 
     private static CliRequest ParseRuntimeImport(

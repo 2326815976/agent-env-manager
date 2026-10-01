@@ -12,9 +12,17 @@ internal sealed class EnvironmentVariableService(
     IEnvironmentVariableRecoveryPointStore recoveryPointStore,
     IEnvironmentManifestStore environmentManifestStore,
     IOperationJournal operationJournal,
+    IMachineEnvironmentVariableReader machineEnvironmentVariableReader,
     TimeProvider timeProvider)
 {
     private const string ManagedVariablePrefix = "AGENT_ENV_MANAGER_";
+    private const string MachineScopeDescription =
+        "机器级环境变量在本版本中只读；管理器只修改当前用户范围。";
+    private static readonly string[] HighRiskVariableNames =
+    [
+        "Path",
+        "PATHEXT"
+    ];
     private readonly ConcurrentDictionary<string, string> _authorizedPreviews =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _applyLock = new(1, 1);
@@ -27,12 +35,12 @@ internal sealed class EnvironmentVariableService(
         var currentPath = await store.GetAsync(
             "Path",
             cancellationToken);
+        var manifests = await environmentManifestStore.ReadAllAsync(
+            cancellationToken);
         var enabledEntries = _pathEditor
             .ExtractManagedEntries(currentPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var manifests = await environmentManifestStore.ReadAllAsync(
-            cancellationToken);
-        var pathEntries = manifests
+        var managedPathEntries = manifests
             .Where(manifest =>
                 !string.IsNullOrWhiteSpace(manifest.ManagedEntryPath))
             .GroupBy(
@@ -48,31 +56,102 @@ internal sealed class EnvironmentVariableService(
                     manifest.Name,
                     manifest.Version,
                     group.Key,
-                    enabledEntries.Contains(group.Key));
+                    enabledEntries.Contains(group.Key),
+                    IsManaged: true);
             })
             .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(
                 entry => entry.Version,
                 StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var variableNames = await store.ListAsync(
-            ManagedVariablePrefix,
-            cancellationToken);
+        var managedEntries = managedPathEntries
+            .Select(entry => entry.ManagedEntryPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var externalPathEntries = ExtractExternalPathEntries(
+            currentPath,
+            managedEntries);
+        var variableNames = await store.ListAllAsync(cancellationToken);
         var variables = new List<EnvironmentVariableEditorVariable>();
         foreach (var name in variableNames)
         {
+            if (string.Equals(name, "Path", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             variables.Add(new EnvironmentVariableEditorVariable(
                 name,
                 await store.GetAsync(name, cancellationToken),
                 await store.IsExpandableAsync(
                     name,
-                    cancellationToken)));
+                    cancellationToken),
+                IsManagedVariableName(name),
+                IsHighRiskVariableName(name)));
         }
+
+        var machineValues = await machineEnvironmentVariableReader
+            .ReadAllAsync(cancellationToken);
+        var machineVariables = machineValues
+            .OrderBy(
+                value => value.Key,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(value => new EnvironmentVariableEditorVariable(
+                value.Key,
+                value.Value,
+                IsExpandable: false,
+                IsManaged: false,
+                IsHighRisk: IsHighRiskVariableName(value.Key)))
+            .ToArray();
 
         return new EnvironmentVariableEditorSnapshot(
             currentPath,
-            pathEntries,
-            variables);
+            [.. managedPathEntries, .. externalPathEntries],
+            variables,
+            machineVariables,
+            MachineScopeDescription);
+    }
+
+    private IReadOnlyList<EnvironmentVariableEditorPathEntry>
+        ExtractExternalPathEntries(
+            string? currentPath,
+            IReadOnlySet<string> managedEntries)
+    {
+        if (string.IsNullOrWhiteSpace(currentPath))
+        {
+            return [];
+        }
+
+        var entries = new List<EnvironmentVariableEditorPathEntry>();
+        foreach (var entry in currentPath.Split(';'))
+        {
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                continue;
+            }
+
+            var normalized = _pathEditor.Normalize(entry);
+            if (normalized is not null
+                && managedEntries.Contains(normalized))
+            {
+                continue;
+            }
+
+            entries.Add(new EnvironmentVariableEditorPathEntry(
+                entry.Trim(),
+                Version: null,
+                entry.Trim(),
+                IsEnabled: true,
+                IsManaged: false));
+        }
+
+        return entries;
+    }
+
+    private static bool IsHighRiskVariableName(string name)
+    {
+        return HighRiskVariableNames.Contains(
+            name,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<EnvironmentVariableUpdatePreview> PreviewManagedPathUpdateAsync(
@@ -372,8 +451,7 @@ internal sealed class EnvironmentVariableService(
             operationId,
             cancellationToken)
             ?? throw new KeyNotFoundException("未找到操作记录。");
-        if (operation.State is OperationState.Succeeded
-            or OperationState.RolledBack)
+        if (operation.State is OperationState.RolledBack)
         {
             operation = OperationStateMachine.Reject(
                 operation,
@@ -395,7 +473,8 @@ internal sealed class EnvironmentVariableService(
             ?? throw new InvalidOperationException("恢复点不存在，无法回滚。");
         await RestoreAsync(recoveryPoint, cancellationToken);
 
-        if (operation.State != OperationState.Failed)
+        if (operation.State is not OperationState.Failed
+            and not OperationState.Succeeded)
         {
             operation = OperationStateMachine.Fail(
                 operation,

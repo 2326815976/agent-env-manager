@@ -8,6 +8,37 @@ namespace AgentEnvManager.Core.Tests.EnvironmentVariables;
 public sealed class EnvironmentVariableTransactionTests
 {
     [Fact]
+    public async Task RollbackOperationAsync_restores_succeeded_variable_update()
+    {
+        var store = new RecordingUserEnvironmentVariableStore(
+            new Dictionary<string, string?>
+            {
+                ["AGENT_ENV_MANAGER_MODE"] = "original"
+            });
+        var journal = new RecordingOperationJournal();
+        var manager = CreateManager(store, journal);
+        var preview = await manager.PreviewManagedVariableUpdateAsync(
+            [
+                new EnvironmentVariableChange(
+                    "AGENT_ENV_MANAGER_MODE",
+                    "changed")
+            ]);
+        var result = await manager.ApplyEnvironmentVariableUpdateAsync(
+            preview);
+        Assert.Equal(
+            "changed",
+            await store.GetAsync("AGENT_ENV_MANAGER_MODE"));
+
+        var rollback = await manager.RollbackOperationAsync(
+            result.Operation.Id);
+
+        Assert.Equal(OperationState.RolledBack, rollback.State);
+        Assert.Equal(
+            "original",
+            await store.GetAsync("AGENT_ENV_MANAGER_MODE"));
+    }
+
+    [Fact]
     public async Task ApplyEnvironmentVariableUpdateAsync_broadcasts_after_success()
     {
         var store = new RecordingUserEnvironmentVariableStore();

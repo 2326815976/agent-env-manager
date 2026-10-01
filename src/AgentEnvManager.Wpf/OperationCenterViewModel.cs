@@ -365,6 +365,8 @@ public sealed class OperationRecordRowViewModel(OperationRecord operation)
         && !string.IsNullOrWhiteSpace(operation.Impact)
         && (operation.State == OperationState.Failed
             || (operation.Type == OperationType.Migrate
+                && operation.State == OperationState.Succeeded)
+            || (operation.Type == OperationType.EnvironmentVariables
                 && operation.State == OperationState.Succeeded));
 }
 

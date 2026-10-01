@@ -180,7 +180,8 @@ public sealed class ClientRoleBoundaryTests
                         new EnvironmentVariableEditorVariable(
                             "AGENT_ENV_MANAGER_MODE",
                             "system",
-                            IsExpandable: false)
+                            IsExpandable: false,
+                            IsManaged: true)
                     ]));
         }
 

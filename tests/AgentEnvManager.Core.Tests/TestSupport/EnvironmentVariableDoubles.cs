@@ -51,6 +51,15 @@ internal sealed class RecordingUserEnvironmentVariableStore(
                 .ToArray());
     }
 
+    public Task<IReadOnlyList<string>> ListAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<string>>(
+            _values.Keys
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+    }
+
     public Task SetAsync(
         string name,
         string? value,
@@ -96,6 +105,21 @@ internal sealed class RecordingUserEnvironmentVariableStore(
 
         BroadcastCount++;
         return Task.CompletedTask;
+    }
+}
+
+internal sealed class RecordingMachineEnvironmentVariableReader(
+    IReadOnlyDictionary<string, string?>? values = null)
+    : IMachineEnvironmentVariableReader
+{
+    private readonly IReadOnlyDictionary<string, string?> _values =
+        values ?? new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase);
+
+    public Task<IReadOnlyDictionary<string, string?>> ReadAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_values);
     }
 }
 

@@ -1,6 +1,7 @@
 using AgentEnvManager.Cli;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -10,6 +11,197 @@ namespace AgentEnvManager.Cli.Tests;
 
 public sealed class CliApplicationTests
 {
+    [Fact]
+    public async Task EnvironmentVariables_render_owned_external_and_machine_entries()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            EnvironmentVariableSnapshot = new EnvironmentVariableEditorSnapshot(
+                @"C:\Tools;C:\shims\node",
+                [
+                    new EnvironmentVariableEditorPathEntry(
+                        "Node.js",
+                        "24.1.0",
+                        @"C:\shims\node",
+                        IsEnabled: true,
+                        IsManaged: true),
+                    new EnvironmentVariableEditorPathEntry(
+                        @"C:\Tools",
+                        Version: null,
+                        @"C:\Tools",
+                        IsEnabled: true,
+                        IsManaged: false)
+                ],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "AGENT_ENV_MANAGER_MODE",
+                        "system",
+                        IsExpandable: false,
+                        IsManaged: true),
+                    new EnvironmentVariableEditorVariable(
+                        "PATHEXT",
+                        ".COM;.EXE",
+                        IsExpandable: false,
+                        IsManaged: false,
+                        IsHighRisk: true)
+                ],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "PROCESSOR_ARCHITECTURE",
+                        "AMD64",
+                        IsExpandable: false)
+                ],
+                "机器级环境变量在本版本中只读。")
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            ["env-vars"],
+            () => manager,
+            output,
+            error);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Contains(@"[受管] C:\shims\node", text);
+        Assert.Contains(@"[外部/只读] C:\Tools", text);
+        Assert.Contains("[受管] AGENT_ENV_MANAGER_MODE=******", text);
+        Assert.Contains("[外部/只读] PATHEXT=******（高风险）", text);
+        Assert.Contains("[只读] PROCESSOR_ARCHITECTURE=******", text);
+        Assert.Contains("只读", text);
+        Assert.DoesNotContain("system", text);
+        Assert.DoesNotContain(".COM;.EXE", text);
+        Assert.DoesNotContain("AMD64", text);
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task EnvironmentVariables_show_secrets_renders_values()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            EnvironmentVariableSnapshot = new EnvironmentVariableEditorSnapshot(
+                @"C:\shims\node",
+                [],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "AGENT_ENV_MANAGER_MODE",
+                        "system",
+                        IsExpandable: false,
+                        IsManaged: true)
+                ],
+                [],
+                "机器级环境变量在本版本中只读。")
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            ["env-vars", "--show-secrets"],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("[受管] AGENT_ENV_MANAGER_MODE=system", output.ToString());
+    }
+
+    [Fact]
+    public async Task EnvironmentVariablesApply_without_confirmation_renders_preview_only()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            EnvironmentVariablePreview = CreateEnvironmentVariablePreview()
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "env-vars-apply",
+                "--set",
+                "AGENT_ENV_MANAGER_MODE=project"
+            ],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(0, manager.VariableApplyCalls);
+        Assert.Equal(
+            "AGENT_ENV_MANAGER_MODE",
+            Assert.Single(manager.LastVariableChanges!).Name);
+        Assert.Contains("环境变量变更预览", output.ToString());
+        Assert.Contains("影响范围:", output.ToString());
+        Assert.Contains("--confirm", error.ToString());
+    }
+
+    [Fact]
+    public async Task EnvironmentVariablesApply_with_confirmation_applies_preview()
+    {
+        var preview = CreateEnvironmentVariablePreview();
+        var manager = new FakeCliEnvironmentManager
+        {
+            EnvironmentVariablePreview = preview,
+            EnvironmentVariableResult = new EnvironmentVariableTransactionResult(
+                new OperationRecord(
+                    "variables-1",
+                    OperationType.EnvironmentVariables,
+                    OperationState.Succeeded,
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch,
+                    "更新 1 个环境变量"),
+                new EnvironmentVariableRecoveryPoint(
+                    "recovery-variables",
+                    preview.OriginalValues,
+                    DateTimeOffset.UnixEpoch))
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "env-vars-apply",
+                "--managed-path",
+                @"C:\shims\node",
+                "--confirm"
+            ],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(1, manager.VariableApplyCalls);
+        Assert.Equal(
+            @"C:\shims\node",
+            Assert.Single(manager.LastManagedEntries!));
+        Assert.Contains("环境变量已应用", output.ToString());
+        Assert.Contains("操作 ID: variables-1", output.ToString());
+        Assert.Contains("恢复点: recovery-variables", output.ToString());
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    private static EnvironmentVariableUpdatePreview
+        CreateEnvironmentVariablePreview()
+    {
+        return new EnvironmentVariableUpdatePreview(
+            new Dictionary<string, string?>
+            {
+                ["AGENT_ENV_MANAGER_MODE"] = "system"
+            },
+            new Dictionary<string, string?>
+            {
+                ["AGENT_ENV_MANAGER_MODE"] = "project"
+            },
+            [
+                new EnvironmentVariableChange(
+                    "AGENT_ENV_MANAGER_MODE",
+                    "project")
+            ],
+            "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。");
+    }
+
     [Fact]
     public async Task RuntimeInstall_without_confirmation_renders_preview_only()
     {

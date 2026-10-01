@@ -55,26 +55,24 @@ internal sealed class ManagedPathEditor(string managedPathRoot)
 
         return currentPath
             .Split(';')
-            .Where(IsManagedEntry)
-            .Select(entry => Path.GetFullPath(
-                Environment.ExpandEnvironmentVariables(entry))
-                .TrimEnd('\\', '/'))
+            .Select(Normalize)
+            .Where(normalized =>
+                normalized is not null
+                && IsUnderManagedRoot(normalized))
+            .Select(normalized => normalized!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
     private string ValidateDesiredEntry(string entry)
     {
-        var expanded = Environment.ExpandEnvironmentVariables(entry);
-        if (!Path.IsPathFullyQualified(expanded))
+        var fullPath = Normalize(entry);
+        if (fullPath is null)
         {
             throw new InvalidOperationException(
                 $"PATH 条目必须是完全限定路径: {entry}");
         }
 
-        var fullPath = Path.GetFullPath(
-            expanded)
-            .TrimEnd('\\', '/');
         if (!IsUnderManagedRoot(fullPath))
         {
             throw new InvalidOperationException(
@@ -84,30 +82,33 @@ internal sealed class ManagedPathEditor(string managedPathRoot)
         return fullPath;
     }
 
-    private bool IsManagedEntry(string entry)
+    internal bool IsManagedEntry(string entry)
+    {
+        var normalized = Normalize(entry);
+        return normalized is not null
+            && IsUnderManagedRoot(normalized);
+    }
+
+    internal string? Normalize(string entry)
     {
         if (string.IsNullOrWhiteSpace(entry))
         {
-            return false;
+            return null;
         }
 
         try
         {
             var expanded = Environment.ExpandEnvironmentVariables(entry);
-            if (!Path.IsPathFullyQualified(expanded))
-            {
-                return false;
-            }
-
-            return IsUnderManagedRoot(Path.GetFullPath(expanded)
-                .TrimEnd('\\', '/'));
+            return Path.IsPathFullyQualified(expanded)
+                ? Path.GetFullPath(expanded).TrimEnd('\\', '/')
+                : null;
         }
         catch (Exception exception) when (
             exception is ArgumentException
             or NotSupportedException
             or PathTooLongException)
         {
-            return false;
+            return null;
         }
     }
 

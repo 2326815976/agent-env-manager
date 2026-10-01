@@ -13,6 +13,63 @@ public sealed class CliArgumentsTests
     }
 
     [Fact]
+    public void Parse_env_vars_lists_environment_variables()
+    {
+        var request = CliArguments.Parse(["env-vars"]);
+
+        Assert.Equal(CliAction.EnvironmentVariablesInspect, request.Action);
+        Assert.False(request.ShowSecrets);
+    }
+
+    [Fact]
+    public void Parse_env_vars_show_secrets_flag()
+    {
+        var request = CliArguments.Parse(["env-vars", "--show-secrets"]);
+
+        Assert.Equal(CliAction.EnvironmentVariablesInspect, request.Action);
+        Assert.True(request.ShowSecrets);
+    }
+
+    [Fact]
+    public void Parse_env_vars_rejects_unknown_option()
+    {
+        var request = CliArguments.Parse(["env-vars", "--show-secret"]);
+
+        Assert.Equal(CliAction.Invalid, request.Action);
+        Assert.Contains("--show-secret", request.Error!);
+    }
+
+    [Fact]
+    public void Parse_env_vars_apply_captures_managed_variable_and_confirmation()
+    {
+        var request = CliArguments.Parse(
+            [
+                "env-vars-apply",
+                "--set",
+                "AGENT_ENV_MANAGER_MODE=project",
+                "--managed-path",
+                @"C:\shims\node",
+                "--confirm"
+            ]);
+
+        Assert.Equal(CliAction.EnvironmentVariablesApply, request.Action);
+        Assert.Equal("AGENT_ENV_MANAGER_MODE", request.VariableName);
+        Assert.Equal("project", request.VariableValue);
+        Assert.Equal(@"C:\shims\node", request.ManagedPathEntry);
+        Assert.True(request.Confirmed);
+    }
+
+    [Fact]
+    public void Parse_env_vars_apply_rejects_assignment_without_value()
+    {
+        var request = CliArguments.Parse(
+            ["env-vars-apply", "--set", "AGENT_ENV_MANAGER_MODE"]);
+
+        Assert.Equal(CliAction.Invalid, request.Action);
+        Assert.Contains("NAME=VALUE", request.Error!);
+    }
+
+    [Fact]
     public void Parse_runtime_install_captures_mirror_and_confirmation()
     {
         var request = CliArguments.Parse(

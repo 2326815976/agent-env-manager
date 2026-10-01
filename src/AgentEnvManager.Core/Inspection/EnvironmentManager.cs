@@ -52,6 +52,7 @@ public sealed class EnvironmentManager
         IEnvironmentActivationLink? activationLink = null,
         IRuntimeHealthCheck? healthCheck = null,
         IUserEnvironmentVariableStore? userEnvironmentVariableStore = null,
+        IMachineEnvironmentVariableReader? machineEnvironmentVariableReader = null,
         IEnvironmentVariableRecoveryPointStore?
             environmentVariableRecoveryPointStore = null,
         ManagerPaths? managerPaths = null,
@@ -134,6 +135,8 @@ public sealed class EnvironmentManager
             _environmentVariableRecoveryPointStore,
             store,
             journal,
+            machineEnvironmentVariableReader
+                ?? new WindowsMachineEnvironmentVariableReader(),
             clock);
 
         _inspector = new EnvironmentInspector(
@@ -643,11 +646,15 @@ public sealed class EnvironmentManager
         var canRollbackCompletedMigration =
             operation.Type == OperationType.Migrate
             && operation.State == OperationState.Succeeded;
+        var canRollbackCompletedUpdate =
+            operation.Type == OperationType.EnvironmentVariables
+            && operation.State == OperationState.Succeeded;
         if (operation.State != OperationState.Failed
-            && !canRollbackCompletedMigration)
+            && !canRollbackCompletedMigration
+            && !canRollbackCompletedUpdate)
         {
             throw new InvalidOperationException(
-                "只有失败操作或已完成迁移可以生成回滚计划。");
+                "只有失败操作、已完成迁移或已完成环境变量事务可以生成回滚计划。");
         }
 
         if (string.IsNullOrWhiteSpace(operation.RecoveryPointId)

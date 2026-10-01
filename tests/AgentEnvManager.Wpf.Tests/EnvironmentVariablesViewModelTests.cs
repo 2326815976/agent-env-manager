@@ -50,8 +50,87 @@ public sealed class EnvironmentVariablesViewModelTests
                 && change.Value is null);
     }
 
+    [Fact]
+    public async Task LoadAsync_separates_managed_external_and_machine_entries()
+    {
+        var client = new StubClient
+        {
+            Snapshot = new EnvironmentVariableEditorSnapshot(
+                @"C:\Tools;C:\shims\node;C:\Other",
+                [
+                    new EnvironmentVariableEditorPathEntry(
+                        "Node.js",
+                        "24.1.0",
+                        @"C:\shims\node",
+                        IsEnabled: true,
+                        IsManaged: true),
+                    new EnvironmentVariableEditorPathEntry(
+                        @"C:\Other",
+                        Version: null,
+                        @"C:\Other",
+                        IsEnabled: true,
+                        IsManaged: false)
+                ],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "AGENT_ENV_MANAGER_MODE",
+                        "system",
+                        IsExpandable: false,
+                        IsManaged: true),
+                    new EnvironmentVariableEditorVariable(
+                        "PATHEXT",
+                        ".COM;.EXE",
+                        IsExpandable: false,
+                        IsManaged: false,
+                        IsHighRisk: true)
+                ],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "PROCESSOR_ARCHITECTURE",
+                        "AMD64",
+                        IsExpandable: false)
+                ],
+                "机器级环境变量在本版本中只读。")
+        };
+        var viewModel = new EnvironmentVariablesViewModel(client);
+
+        await viewModel.LoadAsync();
+
+        Assert.Equal(
+            "AGENT_ENV_MANAGER_MODE",
+            Assert.Single(viewModel.Variables).Name);
+        var external = Assert.Single(viewModel.ExternalVariables);
+        Assert.Equal("PATHEXT", external.Name);
+        Assert.Equal("只读（高风险）", external.EditabilityLabel);
+        Assert.Equal(
+            @"C:\Other",
+            Assert.Single(viewModel.ExternalPathEntries).Entry);
+        Assert.Equal(
+            "PROCESSOR_ARCHITECTURE",
+            Assert.Single(viewModel.MachineVariables).Name);
+        Assert.Contains("只读", viewModel.MachineScopeNote);
+    }
+
     private sealed class StubClient : StubEnvironmentManagerClient
     {
+        public EnvironmentVariableEditorSnapshot Snapshot { get; init; } =
+            new(
+                @"C:\Tools",
+                [
+                    new EnvironmentVariableEditorPathEntry(
+                        "Node.js",
+                        "24.1.0",
+                        @"D:\runtime-shims\node",
+                        IsEnabled: false)
+                ],
+                [
+                    new EnvironmentVariableEditorVariable(
+                        "AGENT_ENV_MANAGER_MODE",
+                        "system",
+                        IsExpandable: false,
+                        IsManaged: true)
+                ]);
+
         public int ApplyCalls { get; private set; }
 
         public IReadOnlyList<EnvironmentVariableChange>? LastVariableChanges
@@ -64,22 +143,7 @@ public sealed class EnvironmentVariablesViewModelTests
             InspectEnvironmentVariableEditorAsync(
                 CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(
-                new EnvironmentVariableEditorSnapshot(
-                    @"C:\Tools",
-                    [
-                        new EnvironmentVariableEditorPathEntry(
-                            "Node.js",
-                            "24.1.0",
-                            @"D:\runtime-shims\node",
-                            IsEnabled: false)
-                    ],
-                    [
-                        new EnvironmentVariableEditorVariable(
-                            "AGENT_ENV_MANAGER_MODE",
-                            "system",
-                            IsExpandable: false)
-                    ]));
+            return Task.FromResult(Snapshot);
         }
 
         public override Task<EnvironmentVariableUpdatePreview>

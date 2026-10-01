@@ -64,17 +64,37 @@ public sealed record EnvironmentVariableEditorPathEntry(
     string Name,
     string? Version,
     string ManagedEntryPath,
-    bool IsEnabled);
+    bool IsEnabled,
+    bool IsManaged = true);
 
 public sealed record EnvironmentVariableEditorVariable(
     string Name,
     string? Value,
-    bool IsExpandable);
+    bool IsExpandable,
+    bool IsManaged = false,
+    bool IsHighRisk = false);
 
 public sealed record EnvironmentVariableEditorSnapshot(
     string? Path,
     IReadOnlyList<EnvironmentVariableEditorPathEntry> PathEntries,
-    IReadOnlyList<EnvironmentVariableEditorVariable> Variables);
+    IReadOnlyList<EnvironmentVariableEditorVariable> Variables,
+    IReadOnlyList<EnvironmentVariableEditorVariable> MachineVariables,
+    string MachineScopeDescription)
+{
+    public EnvironmentVariableEditorSnapshot(
+        string? path,
+        IReadOnlyList<EnvironmentVariableEditorPathEntry> pathEntries,
+        IReadOnlyList<EnvironmentVariableEditorVariable> variables)
+        : this(path, pathEntries, variables, [], string.Empty)
+    {
+    }
+}
+
+public interface IMachineEnvironmentVariableReader
+{
+    Task<IReadOnlyDictionary<string, string?>> ReadAllAsync(
+        CancellationToken cancellationToken = default);
+}
 
 public interface IEnvironmentVariableRecoveryPointStore
 {
@@ -111,6 +131,9 @@ public interface IUserEnvironmentVariableStore
     {
         return Task.FromResult<IReadOnlyList<string>>([]);
     }
+
+    Task<IReadOnlyList<string>> ListAllAsync(
+        CancellationToken cancellationToken = default);
 
     Task SetAsync(
         string name,
