@@ -43,8 +43,15 @@ public sealed record RuntimeInstallCommand(
 
 public sealed record RuntimeInstallContext(
     RuntimeArtifactDescriptor Artifact,
-    string InstallRoot,
+    string InstallRoot);
+
+public sealed record RuntimeStateBindingContext(
+    EnvironmentManifest Manifest,
     string RuntimeStateDirectory);
+
+public sealed record RuntimeStateFile(
+    string Path,
+    string Content);
 
 public sealed record RuntimeInstallPreview(
     RuntimeProviderDescriptor Provider,
@@ -78,4 +85,7 @@ public interface IRuntimeProvider
 
     string GetExecutableRelativePath(
         RuntimeArtifactDescriptor artifact);
+
+    IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+        RuntimeStateBindingContext context);
 }

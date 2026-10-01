@@ -11,6 +11,7 @@ internal sealed class VersionSwitcher(
     IStableActivationPathFactory activationPathFactory,
     IEnvironmentActivationLink activationLink,
     IRuntimeHealthCheck healthCheck,
+    IRuntimeStateBinder stateBinder,
     TimeProvider timeProvider)
 {
     public async Task<VersionSwitchPreview> PreviewAsync(
@@ -126,6 +127,9 @@ internal sealed class VersionSwitcher(
                 preview.Target.Location,
                 cancellationToken);
             await EnsureManagedEntryAsync(preview, cancellationToken);
+            await stateBinder.BindAsync(
+                preview.Target,
+                cancellationToken);
 
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginVerification(
@@ -239,6 +243,9 @@ internal sealed class VersionSwitcher(
             await EnsureManagedEntryAsync(
                 managedEntryPath,
                 target.StableActivationPath,
+                cancellationToken);
+            await stateBinder.BindAsync(
+                recoveryPoint.PreviousManifest,
                 cancellationToken);
         }
 
@@ -396,6 +403,9 @@ internal sealed class VersionSwitcher(
             preview.Active.Location,
             cancellationToken);
         await EnsureManagedEntryAsync(preview, cancellationToken);
+        await stateBinder.BindAsync(
+            preview.Active,
+            cancellationToken);
     }
 
     private async Task EnsureManagedEntryAsync(

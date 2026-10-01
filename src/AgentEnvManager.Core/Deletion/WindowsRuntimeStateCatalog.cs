@@ -1,4 +1,5 @@
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Runtimes;
 
 namespace AgentEnvManager.Core.Deletion;
 
@@ -50,15 +51,13 @@ public sealed class WindowsRuntimeStateCatalog(
     private IReadOnlyList<string> DescribeNodeState(
         EnvironmentManifest manifest)
     {
-        var versionStateRoot = Path.Combine(
+        var versionStateRoot = RuntimeStateLayout.GetVersionStateDirectory(
             runtimeStateRoot,
             manifest.Identity.Value);
-        var globalPrefix = Path.Combine(
-            versionStateRoot,
-            "npm-global");
-        var cacheDirectory = Path.Combine(
-            versionStateRoot,
-            "npm-cache");
+        var globalPrefix = NodeRuntimeStateLayout.GetGlobalPrefix(
+            versionStateRoot);
+        var cacheDirectory = NodeRuntimeStateLayout.GetCacheDirectory(
+            versionStateRoot);
         var packages = EnumerateGlobalPackages(globalPrefix);
         var packageSummary = packages.Count == 0
             ? "无"

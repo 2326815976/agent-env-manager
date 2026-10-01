@@ -58,4 +58,10 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
             $"cpython-{artifact.Version}-windows-x86_64-none",
             "python.exe");
     }
+
+    public IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+        RuntimeStateBindingContext context)
+    {
+        return [];
+    }
 }

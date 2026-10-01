@@ -37,18 +37,6 @@ public sealed class NodeRuntimeProvider : IRuntimeProvider
         RuntimeInstallContext context)
     {
         var artifact = context.Artifact;
-        var globalPrefix = Path.Combine(
-            context.RuntimeStateDirectory,
-            "npm-global").Replace('\\', '/');
-        var cacheDirectory = Path.Combine(
-            context.RuntimeStateDirectory,
-            "npm-cache").Replace('\\', '/');
-        var npmrcPath = Path.Combine(
-            context.InstallRoot,
-            $"node-v{artifact.Version}-win-x64",
-            "node_modules",
-            "npm",
-            "npmrc").Replace('\\', '/');
         var script = $$"""
             $ErrorActionPreference = 'Stop'
             $ProgressPreference = 'SilentlyContinue'
@@ -71,13 +59,6 @@ public sealed class NodeRuntimeProvider : IRuntimeProvider
 
             Expand-Archive -LiteralPath $zipPath -DestinationPath $PWD -Force
             Remove-Item -LiteralPath $zipPath -Force
-
-            $globalPrefix = {{PowerShellLiteral(globalPrefix)}}
-            $cacheDirectory = {{PowerShellLiteral(cacheDirectory)}}
-            New-Item -ItemType Directory -Force -Path $globalPrefix, $cacheDirectory | Out-Null
-            $npmrcPath = {{PowerShellLiteral(npmrcPath)}}
-            $content = "prefix=$globalPrefix`ncache=$cacheDirectory`n"
-            [IO.File]::WriteAllText($npmrcPath, $content, (New-Object Text.UTF8Encoding($false)))
             """;
         var encodedCommand = Convert.ToBase64String(
             Encoding.Unicode.GetBytes(script));
@@ -93,6 +74,41 @@ public sealed class NodeRuntimeProvider : IRuntimeProvider
             context.InstallRoot);
     }
 
+    public IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+        RuntimeStateBindingContext context)
+    {
+        var stateDirectory = context.RuntimeStateDirectory;
+        var globalPrefix = NodeRuntimeStateLayout
+            .GetGlobalPrefix(stateDirectory)
+            .Replace('\\', '/');
+        var cacheDirectory = NodeRuntimeStateLayout
+            .GetCacheDirectory(stateDirectory)
+            .Replace('\\', '/');
+        var nodeLocation = GetNodeDirectory(
+            context.Manifest.Location);
+        var npmrcContent =
+            $"prefix={globalPrefix}{Environment.NewLine}" +
+            $"cache={cacheDirectory}{Environment.NewLine}";
+        return
+        [
+            new RuntimeStateFile(
+                NodeRuntimeStateLayout.GetNpmrcPath(nodeLocation),
+                npmrcContent),
+            new RuntimeStateFile(
+                NodeRuntimeStateLayout.GetNpmCommandPath(nodeLocation),
+                CreateCommandShim(
+                    "npm-cli.js",
+                    globalPrefix,
+                    cacheDirectory)),
+            new RuntimeStateFile(
+                NodeRuntimeStateLayout.GetNpxCommandPath(nodeLocation),
+                CreateCommandShim(
+                    "npx-cli.js",
+                    globalPrefix,
+                    cacheDirectory))
+        ];
+    }
+
     public string GetExecutableRelativePath(
         RuntimeArtifactDescriptor artifact)
     {
@@ -104,5 +120,44 @@ public sealed class NodeRuntimeProvider : IRuntimeProvider
     private static string PowerShellLiteral(string value)
     {
         return $"'{value.Replace("'", "''")}'";
+    }
+
+    private static string GetNodeDirectory(string location)
+    {
+        if (Directory.Exists(location))
+        {
+            return location;
+        }
+
+        var extension = Path.GetExtension(location);
+        return File.Exists(location)
+            || string.Equals(
+                extension,
+                ".exe",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                extension,
+                ".cmd",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                extension,
+                ".bat",
+                StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(location) ?? location
+            : location;
+    }
+
+    private static string CreateCommandShim(
+        string cliFileName,
+        string globalPrefix,
+        string cacheDirectory)
+    {
+        return string.Join(
+            Environment.NewLine,
+            "@echo off",
+            $"set \"NPM_CONFIG_PREFIX={globalPrefix}\"",
+            $"set \"NPM_CONFIG_CACHE={cacheDirectory}\"",
+            $"\"%~dp0node.exe\" \"%~dp0node_modules\\npm\\bin\\{cliFileName}\" %*",
+            string.Empty);
     }
 }

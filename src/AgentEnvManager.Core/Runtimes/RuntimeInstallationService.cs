@@ -15,6 +15,7 @@ internal sealed class RuntimeInstallationService(
     IEnvironmentActivationLink activationLink,
     IEnvironmentIndex environmentIndex,
     VersionSwitcher switcher,
+    IRuntimeStateBinder stateBinder,
     string runtimeRoot,
     string runtimeStateRoot,
     TimeProvider timeProvider)
@@ -182,6 +183,10 @@ internal sealed class RuntimeInstallationService(
             preview,
             cancellationToken);
         var installRootCreated = false;
+        var stateDirectory = RuntimeStateLayout.GetVersionStateDirectory(
+            runtimeStateRoot,
+            preview.Identity.Value);
+        var stateDirectoryExisted = Directory.Exists(stateDirectory);
         EnvironmentManifest? savedManifest = null;
         try
         {
@@ -202,10 +207,7 @@ internal sealed class RuntimeInstallationService(
             var command = provider.CreateInstallCommand(
                 new RuntimeInstallContext(
                     artifact,
-                    preview.InstallRoot,
-                    Path.Combine(
-                        runtimeStateRoot,
-                        preview.Identity.Value)));
+                    preview.InstallRoot));
             var commandResult = await commandRunner.RunAsync(
                 command.Executable,
                 command.Arguments,
@@ -277,6 +279,9 @@ internal sealed class RuntimeInstallationService(
                     await CleanupFailedInstallAsync(
                         savedManifest,
                         installRootCreated ? preview.InstallRoot : null,
+                        stateDirectoryExisted
+                            ? null
+                            : stateDirectory,
                         CancellationToken.None);
                     rollbackSucceeded = true;
                 }
@@ -444,6 +449,7 @@ internal sealed class RuntimeInstallationService(
             cancellationToken)
             ?? throw new InvalidOperationException(
                 "已安装运行时缺少纳管记录。");
+        await stateBinder.BindAsync(manifest, cancellationToken);
         await FindManagedActiveAsync(
             manifest.StableActivationPath,
             cancellationToken);
@@ -549,6 +555,7 @@ internal sealed class RuntimeInstallationService(
     private async Task CleanupFailedInstallAsync(
         EnvironmentManifest? savedManifest,
         string? installRoot,
+        string? stateDirectory,
         CancellationToken cancellationToken)
     {
         if (savedManifest is not null)
@@ -562,6 +569,12 @@ internal sealed class RuntimeInstallationService(
             && Directory.Exists(installRoot))
         {
             DeleteInstallRoot(installRoot);
+        }
+
+        if (!string.IsNullOrWhiteSpace(stateDirectory)
+            && Directory.Exists(stateDirectory))
+        {
+            DeleteStateDirectory(stateDirectory);
         }
 
         await RebuildIndexAsync(cancellationToken);
@@ -584,6 +597,25 @@ internal sealed class RuntimeInstallationService(
         }
 
         DeleteDirectoryTree(fullInstallRoot);
+    }
+
+    private void DeleteStateDirectory(string stateDirectory)
+    {
+        var fullRuntimeStateRoot = Path.GetFullPath(runtimeStateRoot);
+        var fullStateDirectory = Path.GetFullPath(stateDirectory);
+        var allowedPrefix = fullRuntimeStateRoot.EndsWith(
+            Path.DirectorySeparatorChar)
+            ? fullRuntimeStateRoot
+            : fullRuntimeStateRoot + Path.DirectorySeparatorChar;
+        if (!fullStateDirectory.StartsWith(
+            allowedPrefix,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "拒绝删除运行时状态根目录之外的路径。");
+        }
+
+        DeleteDirectoryTree(fullStateDirectory);
     }
 
     private static void DeleteDirectoryTree(string path)

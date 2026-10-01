@@ -593,5 +593,11 @@ public sealed class PythonRuntimeInstallationTests
         {
             return Path.Combine("payload", "python.exe");
         }
+
+        public IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+            RuntimeStateBindingContext context)
+        {
+            return [];
+        }
     }
 }

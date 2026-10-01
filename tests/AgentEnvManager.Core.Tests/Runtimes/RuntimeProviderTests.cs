@@ -187,5 +187,11 @@ public sealed class RuntimeProviderTests
         {
             return Path.Combine("bin", "tool.exe");
         }
+
+        public IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+            RuntimeStateBindingContext context)
+        {
+            return [];
+        }
     }
 }

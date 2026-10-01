@@ -90,6 +90,9 @@ public sealed class EnvironmentManager
                 provider => provider.Descriptor),
             CondaEnvironmentService.Descriptor
         ];
+        var runtimeStateBinder = new ProviderRuntimeStateBinder(
+            resolvedRuntimeProviders,
+            resolvedRuntimeStateRoot);
         _recoveryPointStore = recoveryStore;
         _environmentVariableRecoveryPointStore =
             environmentVariableRecoveryPointStore
@@ -123,6 +126,7 @@ public sealed class EnvironmentManager
             pathFactory,
             link,
             runtimeHealthCheck,
+            runtimeStateBinder,
             clock);
         _runtimeInstallation = new RuntimeInstallationService(
             resolvedRuntimeProviders,
@@ -134,6 +138,7 @@ public sealed class EnvironmentManager
             link,
             environmentIndex,
             _switcher,
+            runtimeStateBinder,
             runtimeRoot ?? resolvedManagerPaths.RuntimeDirectory,
             resolvedRuntimeStateRoot,
             clock);
