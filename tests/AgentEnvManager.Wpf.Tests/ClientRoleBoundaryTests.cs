@@ -1,6 +1,7 @@
 using System.Reflection;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Runtimes;
@@ -127,6 +128,13 @@ public sealed class ClientRoleBoundaryTests
         : RoleScopedRuntimeCatalogClient,
           IRuntimeCenterClient
     {
+        public Task<IReadOnlyList<ManagedRuntimeStatus>>
+            DescribeManagedRuntimesAsync(
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<ManagedRuntimeStatus>>([]);
+        }
+
         public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
             string providerId,
             string version,

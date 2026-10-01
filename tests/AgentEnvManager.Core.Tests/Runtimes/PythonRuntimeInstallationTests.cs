@@ -104,6 +104,46 @@ public sealed class PythonRuntimeInstallationTests
                     requestedRoot,
                     "cpython-3.13.7-windows-x86_64-none"),
                 preview.Location);
+            Assert.Contains(
+                Path.Combine(root, "runtimes", "python", "3.13.7"),
+                preview.Impact,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                Path.GetFullPath(requestedRoot),
+                preview.Impact,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PreviewRuntimeInstallAsync_reports_default_data_root_in_impact()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var manager = CreateManager(
+                root,
+                new InMemoryManifestStore(),
+                new RecordingOperationJournal(),
+                new RecordingRecoveryPointStore(),
+                new RecordingActivationLink());
+
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                "python",
+                "3.13.7");
+
+            Assert.Contains(
+                "默认数据根目录",
+                preview.Impact,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                Path.Combine(root, "runtimes"),
+                preview.Impact,
+                StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

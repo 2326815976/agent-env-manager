@@ -97,7 +97,12 @@ public sealed class EnvironmentManager
                     new PythonRuntimeProvider(),
                     new NodeRuntimeProvider(),
                     new GitRuntimeProvider(),
-                    new PowerShellRuntimeProvider()
+                    new PowerShellRuntimeProvider(),
+                    new UvRuntimeProvider(),
+                    new NpmRuntimeProvider(),
+                    new PnpmRuntimeProvider(),
+                    new RipgrepRuntimeProvider(),
+                    new GitHubCliRuntimeProvider()
                 ])
             .ToDictionary(
                 provider => provider.Descriptor.Id,
@@ -166,6 +171,7 @@ public sealed class EnvironmentManager
             runtimeStateBinder,
             _artifactCache,
             runtimeRoot ?? resolvedManagerPaths.RuntimeDirectory,
+            resolvedManagerPaths.DataRoot,
             resolvedRuntimeStateRoot,
             clock);
         _condaEnvironments = new CondaEnvironmentService(runtimeCommand);
@@ -230,6 +236,36 @@ public sealed class EnvironmentManager
     {
         return _agentAdapters.Keys
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<IReadOnlyList<ManagedRuntimeStatus>>
+        DescribeManagedRuntimesAsync(
+            CancellationToken cancellationToken = default)
+    {
+        var manifests = await _manifestStore.ReadAllAsync(
+            cancellationToken);
+        return _runtimeProviders
+            .Where(provider =>
+                provider.Mode == RuntimeProviderMode.Installable)
+            .Select(provider =>
+            {
+                var managed = manifests
+                    .Where(manifest => string.Equals(
+                        manifest.Name,
+                        provider.Name,
+                        StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(manifest => manifest.AdoptedAtUtc)
+                    .FirstOrDefault();
+                return new ManagedRuntimeStatus(
+                    provider.Id,
+                    provider.Name,
+                    managed is not null,
+                    managed?.Version,
+                    managed?.Location,
+                    managed?.ManagedEntryPath,
+                    managed?.Identity.Value);
+            })
             .ToArray();
     }
 

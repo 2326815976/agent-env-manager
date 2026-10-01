@@ -26,6 +26,13 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
         return manager.DescribeRuntimeProviders();
     }
 
+    public Task<IReadOnlyList<ManagedRuntimeStatus>>
+        DescribeManagedRuntimesAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return manager.DescribeManagedRuntimesAsync(cancellationToken);
+    }
+
     public Task<EnvironmentVariableEditorSnapshot>
         InspectEnvironmentVariableEditorAsync(
             CancellationToken cancellationToken = default)

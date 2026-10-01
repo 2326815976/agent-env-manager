@@ -165,6 +165,11 @@ public sealed class CliApplicationTests
         Assert.Contains(
             @"可执行文件: C:\data\runtimes\python\3.13.7\python\python.exe",
             output.ToString());
+        Assert.Contains(
+            @"受管入口: C:\state\shims\python",
+            output.ToString());
+        Assert.Contains("操作 ID: op-install", output.ToString());
+        Assert.Contains("恢复点: recovery-install", output.ToString());
         Assert.Equal(string.Empty, error.ToString());
     }
 

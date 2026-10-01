@@ -140,6 +140,13 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
         return [];
     }
 
+    public virtual Task<IReadOnlyList<ManagedRuntimeStatus>>
+        DescribeManagedRuntimesAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<ManagedRuntimeStatus>>([]);
+    }
+
     public virtual Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
         string providerId,
         string version,

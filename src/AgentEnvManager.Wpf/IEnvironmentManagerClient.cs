@@ -18,6 +18,9 @@ public interface IRuntimeCatalogClient
 
 public interface IRuntimeCenterClient : IRuntimeCatalogClient
 {
+    Task<IReadOnlyList<ManagedRuntimeStatus>> DescribeManagedRuntimesAsync(
+        CancellationToken cancellationToken = default);
+
     Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
         string providerId,
         string version,

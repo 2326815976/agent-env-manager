@@ -19,6 +19,10 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
     private string _pendingRecoveryPoint = string.Empty;
     private string _artifactPath = string.Empty;
     private string _importResult = string.Empty;
+    private string _pendingManagedEntry = string.Empty;
+    private string _pendingActivationPath = string.Empty;
+    private string _pendingCacheStatus = string.Empty;
+    private string _installResult = string.Empty;
 
     public RuntimeCenterViewModel(
         IRuntimeCenterClient client,
@@ -142,6 +146,30 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         private set => SetProperty(ref _importResult, value);
     }
 
+    public string PendingManagedEntry
+    {
+        get => _pendingManagedEntry;
+        private set => SetProperty(ref _pendingManagedEntry, value);
+    }
+
+    public string PendingActivationPath
+    {
+        get => _pendingActivationPath;
+        private set => SetProperty(ref _pendingActivationPath, value);
+    }
+
+    public string PendingCacheStatus
+    {
+        get => _pendingCacheStatus;
+        private set => SetProperty(ref _pendingCacheStatus, value);
+    }
+
+    public string InstallResult
+    {
+        get => _installResult;
+        private set => SetProperty(ref _installResult, value);
+    }
+
     public ICommand LoadProvidersCommand { get; }
 
     public ICommand PreviewInstallCommand { get; }
@@ -152,17 +180,23 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
 
     public ICommand ImportArtifactCommand { get; }
 
-    public Task LoadProvidersAsync()
+    public async Task LoadProvidersAsync()
     {
-        return RunBusyAsync(() =>
+        await RunBusyAsync(async () =>
         {
+            var managed = await _client.DescribeManagedRuntimesAsync();
             Providers.Replace(
                 _client.DescribeRuntimeProviders()
                     .Select(provider =>
-                        new RuntimeProviderRowViewModel(provider)));
+                        new RuntimeProviderRowViewModel(
+                            provider,
+                            managed.FirstOrDefault(status =>
+                                string.Equals(
+                                    status.ProviderId,
+                                    provider.Id,
+                                    StringComparison.OrdinalIgnoreCase)))));
             StatusMessage =
                 $"已加载 {Providers.Count} 个运行时提供者。";
-            return Task.CompletedTask;
         });
     }
 
@@ -176,6 +210,7 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
 
         await RunBusyAsync(async () =>
         {
+            InstallResult = string.Empty;
             _pendingInstall = await _client.PreviewRuntimeInstallAsync(
                 SelectedProvider.Id,
                 SelectedArtifact.Version,
@@ -189,6 +224,11 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
             PendingTarget = _pendingInstall.InstallRoot;
             PendingRecoveryPoint =
                 _pendingInstall.RecoveryPointId ?? "未记录";
+            PendingManagedEntry = _pendingInstall.ManagedEntryPath;
+            PendingActivationPath = _pendingInstall.StableActivationPath;
+            PendingCacheStatus = _pendingInstall.IsCachedArtifactAvailable
+                ? "缓存制品可用，安装将复用缓存"
+                : "缓存制品不可用，安装将按来源获取";
             StatusMessage = "安装预览已生成，请确认影响范围。";
         });
     }
@@ -204,9 +244,16 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         {
             var installed = await _client.InstallRuntimeAsync(
                 _pendingInstall);
+            var planned = _pendingInstall;
             StatusMessage =
                 $"{installed.Provider.Name} " +
                 $"{installed.Artifact.Version} 已安装。";
+            InstallResult = string.Join(
+                Environment.NewLine,
+                $"状态: 已安装（{installed.Artifact.Version}）",
+                $"受管入口: {installed.ManagedEntryPath}",
+                $"恢复点: {planned.RecoveryPointId ?? "未记录"}",
+                $"操作 ID: {planned.OperationId ?? "未记录"}");
             _pendingInstall = null;
             ClearPendingInstall();
             await RefreshOperationsAsync();
@@ -277,16 +324,24 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         InstallImpact = string.Empty;
         PendingTarget = string.Empty;
         PendingRecoveryPoint = string.Empty;
+        PendingManagedEntry = string.Empty;
+        PendingActivationPath = string.Empty;
+        PendingCacheStatus = string.Empty;
         RaiseCommandStates();
     }
+
 }
 
 public sealed class RuntimeProviderRowViewModel(
-    RuntimeProviderDescriptor provider)
+    RuntimeProviderDescriptor provider,
+    ManagedRuntimeStatus? status)
 {
     public string Id { get; } = provider.Id;
 
     public string Name { get; } = provider.Name;
+
+    public string KindLabel { get; } =
+        EnvironmentLabelFormatter.FormatKind(provider.Kind);
 
     public string ModeLabel { get; } = provider.Mode switch
     {
@@ -298,6 +353,28 @@ public sealed class RuntimeProviderRowViewModel(
     public string Source { get; } = provider.OfficialSource;
 
     public string License { get; } = provider.License;
+
+    public string StatusLabel { get; } = provider.Mode
+        == RuntimeProviderMode.ObservedOnly
+            ? "仅观测"
+            : status?.IsManaged == true
+                ? "已纳管"
+                : "未纳管";
+
+    public string VersionLabel { get; } =
+        provider.Artifacts.Count == 0
+            ? "—"
+            : provider.Artifacts[0].Version;
+
+    public string ManagedVersionLabel { get; } =
+        status?.IsManaged == true
+            ? status.Version ?? "未记录"
+            : "—";
+
+    public string ManagedEntryLabel { get; } =
+        status?.IsManaged == true
+            ? status.ManagedEntryPath ?? "未记录"
+            : "—";
 
     public IReadOnlyList<RuntimeArtifactRowViewModel> Artifacts { get; } =
         provider.Artifacts

@@ -37,16 +37,34 @@ public sealed class CliArgumentsTests
     {
         var request = CliArguments.Parse(
             [
-                "runtime-install-preview",
+                "runtime-install",
                 "python",
                 "3.13.7",
                 "--install-dir",
-                @"D:\AgentRuntimes\python-3.13.7"
+                @"D:\AgentRuntimes\python-3.13.7",
+                "--confirm"
             ]);
 
-        Assert.Equal(CliAction.RuntimeInstallPreview, request.Action);
+        Assert.Equal(CliAction.RuntimeInstall, request.Action);
         Assert.Equal(
             @"D:\AgentRuntimes\python-3.13.7",
             request.InstallRoot);
+        Assert.True(request.Confirmed);
+    }
+
+    [Fact]
+    public void Parse_runtime_install_preview_requires_no_confirmation()
+    {
+        var request = CliArguments.Parse(
+            [
+                "runtime-install-preview",
+                "uv",
+                "0.12.21"
+            ]);
+
+        Assert.Equal(CliAction.RuntimeInstallPreview, request.Action);
+        Assert.Equal("uv", request.ProviderId);
+        Assert.Null(request.InstallRoot);
+        Assert.False(request.Confirmed);
     }
 }

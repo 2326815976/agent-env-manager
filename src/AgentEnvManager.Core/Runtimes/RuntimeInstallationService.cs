@@ -18,6 +18,7 @@ internal sealed class RuntimeInstallationService(
     IRuntimeStateBinder stateBinder,
     IRuntimeArtifactCache artifactCache,
     string runtimeRoot,
+    string runtimeDataRoot,
     string runtimeStateRoot,
     TimeProvider timeProvider)
 {
@@ -60,14 +61,16 @@ internal sealed class RuntimeInstallationService(
             provider,
             artifact,
             installRoot);
-        var useCachedArtifact = artifact.InstallStrategy
-            == RuntimeInstallStrategy.UvManagedDownload
-            && await artifactCache.TryGetCachedAsync(
+        var isCachedArtifactAvailable =
+            await artifactCache.TryGetCachedAsync(
                 artifact,
                 cancellationToken) is not null;
+        var useCachedArtifactLayout = isCachedArtifactAvailable
+            && artifact.InstallStrategy
+                == RuntimeInstallStrategy.UvManagedDownload;
         var executableRelativePath = provider.GetExecutableRelativePath(
             artifact,
-            useCachedArtifact);
+            useCachedArtifactLayout);
         var location = Path.Combine(
             resolvedInstallRoot,
             Path.GetDirectoryName(executableRelativePath)
@@ -116,7 +119,7 @@ internal sealed class RuntimeInstallationService(
                 "该版本已安装并已纳管。",
                 isAlreadyInstalled: true,
                 mirrorUrl: mirrorUrl,
-                isCachedArtifactAvailable: useCachedArtifact);
+                isCachedArtifactAvailable: isCachedArtifactAvailable);
         }
 
         if (Directory.Exists(resolvedInstallRoot)
@@ -129,9 +132,18 @@ internal sealed class RuntimeInstallationService(
         var active = await FindManagedActiveAsync(
             stableActivationPath,
             cancellationToken);
-        var impact =
-            $"安装 {provider.Descriptor.Name} {artifact.Version} 到 {resolvedInstallRoot}；" +
-            "安装或健康检查失败不会改变当前激活版本。";
+        var defaultInstallRoot = Path.Combine(
+            runtimeRoot,
+            provider.Descriptor.Id,
+            artifact.Version);
+        var impact = PathsEqual(resolvedInstallRoot, defaultInstallRoot)
+            ? $"安装 {provider.Descriptor.Name} {artifact.Version} 到默认数据根目录 " +
+                $"{runtimeDataRoot} 下的 {resolvedInstallRoot}；" +
+                "安装或健康检查失败不会改变当前激活版本。"
+            : $"默认数据根目录 {runtimeDataRoot}；默认安装位置 " +
+                $"{defaultInstallRoot}；本次安装 {provider.Descriptor.Name} " +
+                $"{artifact.Version} 到自定义目标目录 {resolvedInstallRoot}；" +
+                "安装或健康检查失败不会改变当前激活版本。";
         var adoptionPreview = new AdoptionPreview(
             fingerprint,
             identity,
@@ -182,7 +194,7 @@ internal sealed class RuntimeInstallationService(
             operation.Id,
             recoveryPoint.Id,
             mirrorUrl,
-            useCachedArtifact);
+            isCachedArtifactAvailable);
     }
 
     private string ResolveInstallRoot(

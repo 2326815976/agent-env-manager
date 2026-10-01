@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Runtimes;
 using AgentEnvManager.Wpf;
@@ -23,6 +24,53 @@ public sealed class RuntimeCenterViewModelTests
         var artifact = Assert.Single(provider.Artifacts);
         Assert.Equal("3.13.7", artifact.Version);
         Assert.Equal("uv 托管下载", artifact.StrategyLabel);
+        Assert.Equal("3.13.7", provider.VersionLabel);
+        Assert.Equal("工具运行时", provider.KindLabel);
+    }
+
+    [Fact]
+    public async Task LoadProvidersAsync_reports_managed_runtime_status()
+    {
+        var client = new StubRuntimeClient
+        {
+            Providers =
+            [
+                new PythonRuntimeProvider().Descriptor,
+                new UvRuntimeProvider().Descriptor,
+                CondaEnvironmentService.Descriptor
+            ],
+            ManagedStatuses =
+            [
+                new ManagedRuntimeStatus(
+                    "python",
+                    "Python",
+                    IsManaged: true,
+                    Version: "3.13.7",
+                    Location: @"D:\AgentRuntimes\python",
+                    ManagedEntryPath: @"C:\shims\python",
+                    Identity: "runtime-python-3.13.7-win-x64")
+            ]
+        };
+        var viewModel = new RuntimeCenterViewModel(client);
+
+        await viewModel.LoadProvidersAsync();
+
+        var python = viewModel.Providers.Single(
+            provider => provider.Id == "python");
+        Assert.Equal("已纳管", python.StatusLabel);
+        Assert.Equal("3.13.7", python.ManagedVersionLabel);
+        Assert.Equal(@"C:\shims\python", python.ManagedEntryLabel);
+
+        var uv = viewModel.Providers.Single(
+            provider => provider.Id == "uv");
+        Assert.Equal("未纳管", uv.StatusLabel);
+        Assert.Equal("—", uv.ManagedVersionLabel);
+        Assert.Equal("—", uv.ManagedEntryLabel);
+
+        Assert.Equal(
+            "仅观测",
+            viewModel.Providers.Single(
+                provider => provider.Id == "conda").StatusLabel);
     }
 
     [Fact]
@@ -59,6 +107,11 @@ public sealed class RuntimeCenterViewModelTests
             @"D:\AgentRuntimes\python-3.13.7",
             viewModel.PendingTarget);
         Assert.Equal("recovery-install", viewModel.PendingRecoveryPoint);
+        Assert.Equal(@"C:\shims\python", viewModel.PendingManagedEntry);
+        Assert.Equal(
+            @"C:\activation\python\current",
+            viewModel.PendingActivationPath);
+        Assert.Contains("缓存制品", viewModel.PendingCacheStatus);
 
         await viewModel.InstallAsync();
 
@@ -66,6 +119,12 @@ public sealed class RuntimeCenterViewModelTests
         Assert.NotNull(client.LastInstallPreview);
         Assert.Equal(1, refreshCount);
         Assert.Contains("已安装", viewModel.StatusMessage);
+        Assert.Contains("已安装", viewModel.InstallResult);
+        Assert.Contains(
+            @"C:\shims\python",
+            viewModel.InstallResult);
+        Assert.Contains("operation-install", viewModel.InstallResult);
+        Assert.Contains("recovery-install", viewModel.InstallResult);
     }
 
     [Fact]
@@ -104,15 +163,28 @@ public sealed class RuntimeCenterViewModelTests
 
     private sealed class StubRuntimeClient : StubEnvironmentManagerClient
     {
-        public IReadOnlyList<RuntimeProviderDescriptor> Providers { get; } =
+        public IReadOnlyList<RuntimeProviderDescriptor> Providers { get; init; } =
         [
             new PythonRuntimeProvider().Descriptor
         ];
+
+        public IReadOnlyList<ManagedRuntimeStatus> ManagedStatuses
+        {
+            get;
+            init;
+        } = [];
 
         public override IReadOnlyList<RuntimeProviderDescriptor>
             DescribeRuntimeProviders()
         {
             return Providers;
+        }
+
+        public override Task<IReadOnlyList<ManagedRuntimeStatus>>
+            DescribeManagedRuntimesAsync(
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(ManagedStatuses);
         }
 
         public string? LastProviderId { get; private set; }

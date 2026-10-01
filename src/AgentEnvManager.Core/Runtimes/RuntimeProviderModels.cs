@@ -80,6 +80,15 @@ public sealed record InstalledRuntime(
     string ExecutablePath,
     string ManagedEntryPath);
 
+public sealed record ManagedRuntimeStatus(
+    string ProviderId,
+    string ProviderName,
+    bool IsManaged,
+    string? Version,
+    string? Location,
+    string? ManagedEntryPath,
+    string? Identity);
+
 public interface IRuntimeProvider
 {
     RuntimeProviderDescriptor Descriptor { get; }
