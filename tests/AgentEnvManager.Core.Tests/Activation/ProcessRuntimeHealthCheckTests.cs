@@ -137,6 +137,33 @@ public sealed class ProcessRuntimeHealthCheckTests
         }
     }
 
+    [Fact]
+    public async Task CheckAsync_accepts_git_windows_suffix()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "AgentEnvManager.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(root, "git.cmd"),
+                $"@echo off{Environment.NewLine}echo git version 2.56.0.windows.1{Environment.NewLine}");
+
+            var result = await new ProcessRuntimeHealthCheck().CheckAsync(
+                CreateGitManifest(root, "2.56.0"),
+                root);
+
+            Assert.True(result.IsHealthy);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static EnvironmentManifest CreateManifest(
         string location,
         string version)
@@ -156,6 +183,28 @@ public sealed class ProcessRuntimeHealthCheckTests
             IsSystemComponent: false,
             DateTimeOffset.UnixEpoch,
             "node-key",
+            Path.Combine(location, "entry"));
+    }
+
+    private static EnvironmentManifest CreateGitManifest(
+        string location,
+        string version)
+    {
+        return new EnvironmentManifest(
+            new EnvironmentIdentity("git"),
+            new EnvironmentFingerprint("git-fingerprint"),
+            EnvironmentAssetKind.ToolRuntime,
+            "Git",
+            version,
+            DiscoverySourceInfo.PathCommand,
+            Path.Combine(location, "git.cmd"),
+            Path.Combine(location, "current"),
+            "asset-hash",
+            "recovery",
+            "operation",
+            IsSystemComponent: false,
+            DateTimeOffset.UnixEpoch,
+            "git-key",
             Path.Combine(location, "entry"));
     }
 }

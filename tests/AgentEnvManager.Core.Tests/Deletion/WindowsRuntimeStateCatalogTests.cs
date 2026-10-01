@@ -49,6 +49,42 @@ public sealed class WindowsRuntimeStateCatalogTests
         }
     }
 
+    [Fact]
+    public async Task DescribeAsync_marks_git_config_and_sensitive_paths()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-env-manager-git-state-tests-{Guid.NewGuid():N}");
+        var catalog = new WindowsRuntimeStateCatalog(root);
+
+        var state = await catalog.DescribeAsync(CreateGitManifest());
+
+        Assert.Contains(
+            state,
+            entry => entry.Contains(
+                ".gitconfig",
+                StringComparison.OrdinalIgnoreCase)
+                && entry.Contains(
+                    "确认",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            state,
+            entry => entry.Contains(
+                ".ssh",
+                StringComparison.OrdinalIgnoreCase)
+                && entry.Contains(
+                    "敏感",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            state,
+            entry => entry.Contains(
+                ".git-credentials",
+                StringComparison.OrdinalIgnoreCase)
+                && entry.Contains(
+                    "不读取",
+                    StringComparison.Ordinal));
+    }
+
     private static EnvironmentManifest CreateNodeManifest(string identity)
     {
         return new EnvironmentManifest(
@@ -67,5 +103,25 @@ public sealed class WindowsRuntimeStateCatalogTests
             DateTimeOffset.UnixEpoch,
             "node-activation",
             @"C:\shims\node");
+    }
+
+    private static EnvironmentManifest CreateGitManifest()
+    {
+        return new EnvironmentManifest(
+            new EnvironmentIdentity("runtime-git-2.56.0-win-x64"),
+            new EnvironmentFingerprint("runtime-git-2.56.0-win-x64"),
+            EnvironmentAssetKind.ToolRuntime,
+            "Git",
+            "2.56.0",
+            DiscoverySourceInfo.RuntimeProvider,
+            @"D:\Runtimes\git\2.56.0",
+            @"C:\activations\git\current",
+            "asset-hash",
+            "recovery",
+            "install",
+            IsSystemComponent: false,
+            DateTimeOffset.UnixEpoch,
+            "git-activation",
+            @"C:\shims\git");
     }
 }

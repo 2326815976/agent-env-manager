@@ -12,7 +12,8 @@ public sealed record ManagerPaths(
     string QuarantineDirectory,
     string DatabasePath,
     string RuntimeDirectory,
-    string RuntimeStateDirectory)
+    string RuntimeStateDirectory,
+    string GitConfigurationBackupDirectory)
 {
     public static ManagerPaths Resolve(
         string? stateRoot = null,
@@ -39,6 +40,7 @@ public sealed record ManagerPaths(
             Path.Combine(resolvedRoot, "quarantine"),
             Path.Combine(resolvedRoot, "index", "environments.db"),
             Path.Combine(resolvedDataRoot, "runtimes"),
-            Path.Combine(resolvedDataRoot, "runtime-state"));
+            Path.Combine(resolvedDataRoot, "runtime-state"),
+            Path.Combine(resolvedRoot, "git-config-backups"));
     }
 }

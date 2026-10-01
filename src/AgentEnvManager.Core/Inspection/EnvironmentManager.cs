@@ -30,6 +30,8 @@ public sealed class EnvironmentManager
     private readonly RuntimeInstallationService _runtimeInstallation;
     private readonly CondaEnvironmentService _condaEnvironments;
     private readonly IRuntimeStateCatalog _runtimeStateCatalog;
+    private readonly IGitConfigurationBackupService
+        _gitConfigurationBackup;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -53,7 +55,8 @@ public sealed class EnvironmentManager
         IRuntimeStateCatalog? runtimeStateCatalog = null,
         IEnumerable<IRuntimeProvider>? runtimeProviders = null,
         IRuntimeCommandRunner? runtimeCommandRunner = null,
-        string? runtimeRoot = null)
+        string? runtimeRoot = null,
+        IGitConfigurationBackupService? gitConfigurationBackupService = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -80,7 +83,11 @@ public sealed class EnvironmentManager
                 StringComparer.OrdinalIgnoreCase);
         var resolvedRuntimeProviders = (
             runtimeProviders
-                ?? [new PythonRuntimeProvider(), new NodeRuntimeProvider()])
+                ?? [
+                    new PythonRuntimeProvider(),
+                    new NodeRuntimeProvider(),
+                    new GitRuntimeProvider()
+                ])
             .ToDictionary(
                 provider => provider.Descriptor.Id,
                 StringComparer.OrdinalIgnoreCase);
@@ -145,6 +152,12 @@ public sealed class EnvironmentManager
         _condaEnvironments = new CondaEnvironmentService(runtimeCommand);
         _runtimeStateCatalog = runtimeStateCatalog
             ?? new WindowsRuntimeStateCatalog(resolvedRuntimeStateRoot);
+        _gitConfigurationBackup = gitConfigurationBackupService
+            ?? new GitConfigurationBackupService(
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.UserProfile),
+                resolvedManagerPaths.GitConfigurationBackupDirectory,
+                clock);
         _migrator = new EnvironmentMigrator(
             store,
             recoveryStore,
@@ -236,6 +249,25 @@ public sealed class EnvironmentManager
                 "未找到要查看运行时状态的已纳管环境。");
         return await _runtimeStateCatalog.DescribeAsync(
             manifest,
+            cancellationToken);
+    }
+
+    public Task<GitConfigurationBackupPreview>
+        PreviewGitConfigurationBackupAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _gitConfigurationBackup.PreviewAsync(cancellationToken);
+    }
+
+    public Task<GitConfigurationBackupResult>
+        BackupGitConfigurationAsync(
+            GitConfigurationBackupPreview preview,
+            bool confirmed,
+            CancellationToken cancellationToken = default)
+    {
+        return _gitConfigurationBackup.BackupAsync(
+            preview,
+            confirmed,
             cancellationToken);
     }
 

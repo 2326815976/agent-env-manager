@@ -91,7 +91,7 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
     {
         return Regex.IsMatch(
             output,
-            $@"(?<![A-Za-z0-9_.-])v?{Regex.Escape(version)}(?![A-Za-z0-9_.-])",
+            $@"(?<![A-Za-z0-9_.-])v?{Regex.Escape(version)}(?:\.windows\.\d+)?(?![A-Za-z0-9_.-])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 }

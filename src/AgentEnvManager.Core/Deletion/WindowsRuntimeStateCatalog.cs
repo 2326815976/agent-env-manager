@@ -27,8 +27,10 @@ public sealed class WindowsRuntimeStateCatalog(
             ],
             "Git" =>
             [
-                $"用户配置: {Path.Combine(userProfile, ".gitconfig")}",
-                $"SSH 目录: {Path.Combine(userProfile, ".ssh")}（不删除）"
+                $"用户配置: {Path.Combine(userProfile, ".gitconfig")}（确认后才单独备份）",
+                $"SSH 目录: {Path.Combine(userProfile, ".ssh")}（敏感，不迁移、不删除、不进入日志或诊断包）",
+                $"凭据文件: {Path.Combine(userProfile, ".git-credentials")}（敏感，不读取、不迁移、不备份）",
+                "凭据存储: Windows 凭据管理器（不读取、不迁移、不备份）"
             ],
             "PowerShell 7" =>
             [
