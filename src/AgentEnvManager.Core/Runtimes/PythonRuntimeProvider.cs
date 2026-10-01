@@ -35,21 +35,20 @@ public sealed class PythonRuntimeProvider : IRuntimeProvider
         ]);
 
     public RuntimeInstallCommand CreateInstallCommand(
-        RuntimeArtifactDescriptor artifact,
-        string installRoot)
+        RuntimeInstallContext context)
     {
         return new RuntimeInstallCommand(
             "uv",
             [
                 "python",
                 "install",
-                artifact.Version,
+                context.Artifact.Version,
                 "--install-dir",
-                installRoot,
+                context.InstallRoot,
                 "--no-bin",
                 "--no-registry"
             ],
-            installRoot);
+            context.InstallRoot);
     }
 
     public string GetExecutableRelativePath(

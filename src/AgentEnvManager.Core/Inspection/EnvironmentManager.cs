@@ -29,6 +29,7 @@ public sealed class EnvironmentManager
         _runtimeProviders;
     private readonly RuntimeInstallationService _runtimeInstallation;
     private readonly CondaEnvironmentService _condaEnvironments;
+    private readonly IRuntimeStateCatalog _runtimeStateCatalog;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -62,6 +63,8 @@ public sealed class EnvironmentManager
             ?? InMemoryEnvironmentRecoveryPointStore.Instance;
         var journal = operationJournal ?? new InMemoryOperationJournal();
         var resolvedManagerPaths = managerPaths ?? ManagerPaths.Resolve();
+        var resolvedRuntimeStateRoot =
+            resolvedManagerPaths.RuntimeStateDirectory;
         var pathFactory = activationPathFactory
             ?? new DefaultStableActivationPathFactory(
                 resolvedManagerPaths.StateRoot);
@@ -76,7 +79,8 @@ public sealed class EnvironmentManager
                 adapter => adapter.Name,
                 StringComparer.OrdinalIgnoreCase);
         var resolvedRuntimeProviders = (
-            runtimeProviders ?? [new PythonRuntimeProvider()])
+            runtimeProviders
+                ?? [new PythonRuntimeProvider(), new NodeRuntimeProvider()])
             .ToDictionary(
                 provider => provider.Descriptor.Id,
                 StringComparer.OrdinalIgnoreCase);
@@ -131,8 +135,11 @@ public sealed class EnvironmentManager
             environmentIndex,
             _switcher,
             runtimeRoot ?? resolvedManagerPaths.RuntimeDirectory,
+            resolvedRuntimeStateRoot,
             clock);
         _condaEnvironments = new CondaEnvironmentService(runtimeCommand);
+        _runtimeStateCatalog = runtimeStateCatalog
+            ?? new WindowsRuntimeStateCatalog(resolvedRuntimeStateRoot);
         _migrator = new EnvironmentMigrator(
             store,
             recoveryStore,
@@ -157,8 +164,7 @@ public sealed class EnvironmentManager
             quarantineStore
                 ?? new FileEnvironmentQuarantineStore(
                     resolvedManagerPaths.QuarantineDirectory),
-            runtimeStateCatalog
-                ?? new WindowsRuntimeStateCatalog(),
+            _runtimeStateCatalog,
             clock);
     }
 
@@ -211,6 +217,20 @@ public sealed class EnvironmentManager
             prefix,
             definitionPath,
             targetPrefix,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<string>> InspectRuntimeStateAsync(
+        EnvironmentFingerprint fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        var manifest = await _manifestStore.FindByFingerprintAsync(
+            fingerprint,
+            cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "未找到要查看运行时状态的已纳管环境。");
+        return await _runtimeStateCatalog.DescribeAsync(
+            manifest,
             cancellationToken);
     }
 

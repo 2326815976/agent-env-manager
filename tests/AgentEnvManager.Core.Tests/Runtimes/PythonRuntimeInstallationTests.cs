@@ -580,13 +580,12 @@ public sealed class PythonRuntimeInstallationTests
             ]);
 
         public RuntimeInstallCommand CreateInstallCommand(
-            RuntimeArtifactDescriptor artifact,
-            string installRoot)
+            RuntimeInstallContext context)
         {
             return new RuntimeInstallCommand(
                 "test-runtime",
-                ["install", artifact.Version],
-                installRoot);
+                ["install", context.Artifact.Version],
+                context.InstallRoot);
         }
 
         public string GetExecutableRelativePath(

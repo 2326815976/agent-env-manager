@@ -16,6 +16,7 @@ internal sealed class RuntimeInstallationService(
     IEnvironmentIndex environmentIndex,
     VersionSwitcher switcher,
     string runtimeRoot,
+    string runtimeStateRoot,
     TimeProvider timeProvider)
 {
     public async Task<RuntimeInstallPreview> PreviewAsync(
@@ -199,8 +200,12 @@ internal sealed class RuntimeInstallationService(
             Directory.CreateDirectory(preview.InstallRoot);
             installRootCreated = true;
             var command = provider.CreateInstallCommand(
-                artifact,
-                preview.InstallRoot);
+                new RuntimeInstallContext(
+                    artifact,
+                    preview.InstallRoot,
+                    Path.Combine(
+                        runtimeStateRoot,
+                        preview.Identity.Value)));
             var commandResult = await commandRunner.RunAsync(
                 command.Executable,
                 command.Arguments,

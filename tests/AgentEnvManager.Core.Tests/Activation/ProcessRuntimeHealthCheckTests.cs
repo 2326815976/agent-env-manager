@@ -110,6 +110,33 @@ public sealed class ProcessRuntimeHealthCheckTests
         }
     }
 
+    [Fact]
+    public async Task CheckAsync_accepts_v_prefix_in_node_version()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "AgentEnvManager.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(root, "node.cmd"),
+                $"@echo off{Environment.NewLine}echo v24.1.0{Environment.NewLine}");
+
+            var result = await new ProcessRuntimeHealthCheck().CheckAsync(
+                CreateManifest(root, "24.1.0"),
+                root);
+
+            Assert.True(result.IsHealthy);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static EnvironmentManifest CreateManifest(
         string location,
         string version)

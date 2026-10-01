@@ -2,7 +2,8 @@ using AgentEnvManager.Core.Adoption;
 
 namespace AgentEnvManager.Core.Deletion;
 
-public sealed class WindowsRuntimeStateCatalog : IRuntimeStateCatalog
+public sealed class WindowsRuntimeStateCatalog(
+    string runtimeStateRoot) : IRuntimeStateCatalog
 {
     public Task<IReadOnlyList<string>> DescribeAsync(
         EnvironmentManifest manifest,
@@ -17,11 +18,7 @@ public sealed class WindowsRuntimeStateCatalog : IRuntimeStateCatalog
             Environment.SpecialFolder.ApplicationData);
         IReadOnlyList<string> state = manifest.Name switch
         {
-            "Node.js" =>
-            [
-                $"全局包: {Path.Combine(roamingAppData, "npm")}",
-                $"缓存: {Path.Combine(localAppData, "npm-cache")}"
-            ],
+            "Node.js" => DescribeNodeState(manifest),
             "Python" =>
             [
                 $"用户包: {Path.Combine(roamingAppData, "Python")}",
@@ -48,5 +45,69 @@ public sealed class WindowsRuntimeStateCatalog : IRuntimeStateCatalog
             _ => []
         };
         return Task.FromResult(state);
+    }
+
+    private IReadOnlyList<string> DescribeNodeState(
+        EnvironmentManifest manifest)
+    {
+        var versionStateRoot = Path.Combine(
+            runtimeStateRoot,
+            manifest.Identity.Value);
+        var globalPrefix = Path.Combine(
+            versionStateRoot,
+            "npm-global");
+        var cacheDirectory = Path.Combine(
+            versionStateRoot,
+            "npm-cache");
+        var packages = EnumerateGlobalPackages(globalPrefix);
+        var packageSummary = packages.Count == 0
+            ? "无"
+            : string.Join(", ", packages);
+        return
+        [
+            $"全局包: {globalPrefix}（受影响包: {packageSummary}）",
+            $"缓存: {cacheDirectory}"
+        ];
+    }
+
+    private static IReadOnlyList<string> EnumerateGlobalPackages(
+        string globalPrefix)
+    {
+        var nodeModules = Path.Combine(globalPrefix, "node_modules");
+        if (!Directory.Exists(nodeModules))
+        {
+            return [];
+        }
+
+        var packages = new List<string>();
+        foreach (var directory in Directory.EnumerateDirectories(nodeModules))
+        {
+            var name = Path.GetFileName(directory);
+            if (string.Equals(
+                name,
+                ".bin",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (name.StartsWith('@'))
+            {
+                foreach (var scopedPackage in Directory.EnumerateDirectories(
+                    directory))
+                {
+                    packages.Add(
+                        $"{name}/{Path.GetFileName(scopedPackage)}");
+                }
+
+                continue;
+            }
+
+            packages.Add(name);
+        }
+
+        return packages
+            .OrderBy(package => package, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

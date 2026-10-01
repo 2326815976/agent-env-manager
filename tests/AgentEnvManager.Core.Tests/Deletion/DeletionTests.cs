@@ -197,6 +197,51 @@ public sealed class DeletionTests
     }
 
     [Fact]
+    public async Task PreviewEnvironmentDeletionAsync_lists_affected_node_global_packages()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            Directory.CreateDirectory(sourcePath);
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var nodeModules = Path.Combine(
+                root,
+                "runtime-state",
+                manifest.Identity.Value,
+                "npm-global",
+                "node_modules");
+            Directory.CreateDirectory(Path.Combine(nodeModules, "left-pad"));
+            var manager = CreateManager(
+                root,
+                manifestStore,
+                activationLink,
+                runtimeStateCatalog: new WindowsRuntimeStateCatalog(
+                    Path.Combine(root, "runtime-state")));
+
+            var preview = await manager.PreviewEnvironmentDeletionAsync(
+                manifest.Fingerprint);
+
+            Assert.Contains(
+                preview.AssociatedState,
+                state => state.Contains(
+                    "left-pad",
+                    StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PermanentDeleteAsync_rejects_modified_preview()
     {
         var root = CreateTempRoot();
@@ -246,7 +291,8 @@ public sealed class DeletionTests
         string root,
         IEnvironmentManifestStore manifestStore,
         RecordingActivationLink? activationLink = null,
-        RecordingOperationJournal? operationJournal = null)
+        RecordingOperationJournal? operationJournal = null,
+        IRuntimeStateCatalog? runtimeStateCatalog = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(
@@ -261,7 +307,8 @@ public sealed class DeletionTests
             environmentPathMover: new FileSystemEnvironmentPathMover(),
             quarantineStore: new FileEnvironmentQuarantineStore(
                 Path.Combine(root, "quarantine")),
-            runtimeStateCatalog: new StubRuntimeStateCatalog());
+            runtimeStateCatalog: runtimeStateCatalog
+                ?? new StubRuntimeStateCatalog());
     }
 
     private static async Task ConfigureActivationAsync(

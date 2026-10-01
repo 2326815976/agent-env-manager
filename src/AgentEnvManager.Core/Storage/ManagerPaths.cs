@@ -11,7 +11,8 @@ public sealed record ManagerPaths(
     string AgentBackupDirectory,
     string QuarantineDirectory,
     string DatabasePath,
-    string RuntimeDirectory)
+    string RuntimeDirectory,
+    string RuntimeStateDirectory)
 {
     public static ManagerPaths Resolve(
         string? stateRoot = null,
@@ -37,6 +38,7 @@ public sealed record ManagerPaths(
             Path.Combine(resolvedRoot, "agent-backups"),
             Path.Combine(resolvedRoot, "quarantine"),
             Path.Combine(resolvedRoot, "index", "environments.db"),
-            Path.Combine(resolvedDataRoot, "runtimes"));
+            Path.Combine(resolvedDataRoot, "runtimes"),
+            Path.Combine(resolvedDataRoot, "runtime-state"));
     }
 }

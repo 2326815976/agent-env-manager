@@ -41,6 +41,11 @@ public sealed record RuntimeInstallCommand(
     IReadOnlyList<string> Arguments,
     string WorkingDirectory);
 
+public sealed record RuntimeInstallContext(
+    RuntimeArtifactDescriptor Artifact,
+    string InstallRoot,
+    string RuntimeStateDirectory);
+
 public sealed record RuntimeInstallPreview(
     RuntimeProviderDescriptor Provider,
     RuntimeArtifactDescriptor Artifact,
@@ -69,8 +74,7 @@ public interface IRuntimeProvider
     RuntimeProviderDescriptor Descriptor { get; }
 
     RuntimeInstallCommand CreateInstallCommand(
-        RuntimeArtifactDescriptor artifact,
-        string installRoot);
+        RuntimeInstallContext context);
 
     string GetExecutableRelativePath(
         RuntimeArtifactDescriptor artifact);

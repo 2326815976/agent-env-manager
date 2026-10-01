@@ -39,7 +39,8 @@ public static class EnvironmentManagerFactory
             managerPaths: paths,
             quarantineStore: new FileEnvironmentQuarantineStore(
                 paths.QuarantineDirectory),
-            runtimeStateCatalog: new WindowsRuntimeStateCatalog(),
+            runtimeStateCatalog: new WindowsRuntimeStateCatalog(
+                paths.RuntimeStateDirectory),
             migrationOccupancyProbe: new WindowsMigrationOccupancyProbe(),
             environmentPathMover: new FileSystemEnvironmentPathMover(),
             agentAdapters:

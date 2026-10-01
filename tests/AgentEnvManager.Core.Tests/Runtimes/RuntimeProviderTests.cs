@@ -174,13 +174,12 @@ public sealed class RuntimeProviderTests
             ]);
 
         public RuntimeInstallCommand CreateInstallCommand(
-            RuntimeArtifactDescriptor artifact,
-            string installRoot)
+            RuntimeInstallContext context)
         {
             return new RuntimeInstallCommand(
                 "archive-tool-installer",
-                ["install", artifact.Version],
-                installRoot);
+                ["install", context.Artifact.Version],
+                context.InstallRoot);
         }
 
         public string GetExecutableRelativePath(
