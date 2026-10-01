@@ -157,6 +157,7 @@ public sealed class EnvironmentManager
                 Environment.GetFolderPath(
                     Environment.SpecialFolder.UserProfile),
                 resolvedManagerPaths.GitConfigurationBackupDirectory,
+                journal,
                 clock);
         _migrator = new EnvironmentMigrator(
             store,
@@ -467,6 +468,18 @@ public sealed class EnvironmentManager
                     ?? "迁移前目录和激活目标恢复完成。");
         }
 
+        if (operation.Type == OperationType.GitConfigurationBackup)
+        {
+            return new OperationRollbackPlan(
+                operation.Id,
+                operation.Target
+                    ?? throw new InvalidOperationException(
+                        "Git 配置备份操作缺少目标。"),
+                "删除 Git 配置备份文件。",
+                operation.RecoveryPointId,
+                "Git 配置备份文件已删除。");
+        }
+
         var recoveryPoint = await _recoveryPointStore.GetAsync(
             operation.RecoveryPointId,
             cancellationToken)
@@ -624,6 +637,10 @@ public sealed class EnvironmentManager
                     cancellationToken),
             OperationType.EnvironmentVariables =>
                 await _environmentVariables.RollbackAsync(
+                    operationId,
+                    cancellationToken),
+            OperationType.GitConfigurationBackup =>
+                await _gitConfigurationBackup.RollbackAsync(
                     operationId,
                     cancellationToken),
             _ => await _adopter.RollbackOperationAsync(

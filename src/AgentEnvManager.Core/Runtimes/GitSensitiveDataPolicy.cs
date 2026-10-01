@@ -1,7 +1,13 @@
+using System.Text.RegularExpressions;
+
 namespace AgentEnvManager.Core.Runtimes;
 
 public static class GitSensitiveDataPolicy
 {
+    private static readonly Regex PotentialSecretPattern = new(
+        @"(?im)(?:\b(password|passwd|token|secret|api[_-]?key|authorization|oauth)\b|extraheader\s*=|://[^/\s:@]+:[^/\s@]+@)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public static IReadOnlyList<string> GetProtectedPaths(
         string userProfile)
     {
@@ -39,5 +45,10 @@ public static class GitSensitiveDataPolicy
                 fileName,
                 "_netrc",
                 StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool ContainsPotentialSecret(string content)
+    {
+        return PotentialSecretPattern.IsMatch(content);
     }
 }
