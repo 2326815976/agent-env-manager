@@ -95,6 +95,9 @@ public sealed class PowerShellRuntimeProvider : IRuntimeProvider
         var configPath = Path.Combine(
             context.Manifest.Location,
             "powershell.config.json");
+        var loaderPath = Path.Combine(
+            context.Manifest.Location,
+            "Profile.ps1");
         var configContent = JsonSerializer.Serialize(
             new Dictionary<string, string>
             {
@@ -109,6 +112,9 @@ public sealed class PowerShellRuntimeProvider : IRuntimeProvider
                 profilePath,
                 "# AgentEnvManager managed PowerShell profile" +
                 Environment.NewLine),
+            new RuntimeStateFile(
+                loaderPath,
+                $". {PowerShellLiteral(profilePath)}{Environment.NewLine}"),
             new RuntimeStateFile(
                 configPath,
                 configContent)

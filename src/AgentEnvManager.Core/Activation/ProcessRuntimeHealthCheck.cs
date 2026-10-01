@@ -1,11 +1,18 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Text;
 using AgentEnvManager.Core.Adoption;
 
 namespace AgentEnvManager.Core.Activation;
 
 public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
 {
+    private static readonly string PowerShellVersionCommand =
+        "pwsh -NoLogo -NoProfile -NonInteractive -EncodedCommand " +
+        Convert.ToBase64String(
+            Encoding.Unicode.GetBytes(
+                "$PSVersionTable.PSVersion.ToString()"));
+
     public async Task<RuntimeHealthCheckResult> CheckAsync(
         EnvironmentManifest manifest,
         string managedEntryPath,
@@ -81,8 +88,7 @@ public sealed class ProcessRuntimeHealthCheck : IRuntimeHealthCheck
             "Python" => "python --version",
             "Git" => "git --version",
             "npm" => "npm --version",
-            "PowerShell 7" =>
-                "pwsh -NoLogo -NoProfile -NonInteractive -Command $PSVersionTable.PSVersion.ToString()",
+            "PowerShell 7" => PowerShellVersionCommand,
             _ => null
         };
     }

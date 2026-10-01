@@ -99,9 +99,16 @@ public sealed class PowerShellRuntimeProviderTests
                 .GetString());
         Assert.Contains(
             files,
-            file => file.Path.EndsWith(
-                "profile.ps1",
-                StringComparison.OrdinalIgnoreCase));
+            file => Path.GetFileName(file.Path)
+                .Equals("profile.ps1", StringComparison.Ordinal));
+        var loader = Assert.Single(
+            files,
+            file => Path.GetFileName(file.Path)
+                .Equals("Profile.ps1", StringComparison.Ordinal));
+        Assert.Contains(
+            Path.Combine(stateDirectory, "PowerShell", "profile.ps1"),
+            loader.Content,
+            StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             files,
             file => file.Path.EndsWith(
@@ -166,6 +173,15 @@ public sealed class PowerShellRuntimeProviderTests
                         preview.Location,
                         "powershell.config.json")),
                 StringComparison.Ordinal);
+            Assert.True(File.Exists(
+                Path.Combine(preview.Location, "Profile.ps1")));
+            Assert.True(File.Exists(Path.Combine(
+                root,
+                "data",
+                "runtime-state",
+                installed.Manifest.Identity.Value,
+                "PowerShell",
+                "profile.ps1")));
         }
         finally
         {
@@ -197,6 +213,61 @@ public sealed class PowerShellRuntimeProviderTests
         Assert.True(observed.Asset.IsSystemComponent);
     }
 
+    [Fact]
+    public async Task SwitchVersionAsync_restores_previous_powershell_when_health_fails()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"agent-env-manager-powershell-switch-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var provider = new TwoVersionPowerShellProvider();
+            var link = new RecordingActivationLink();
+            var runner = new RecordingRuntimeCommandRunner(invocation =>
+            {
+                File.WriteAllText(
+                    Path.Combine(invocation.WorkingDirectory, "pwsh.exe"),
+                    string.Empty);
+                return new RuntimeCommandResult(
+                    0,
+                    "installed",
+                    string.Empty);
+            });
+            var manager = new EnvironmentManager(
+                new StubEnvironmentProbe(
+                    new EnvironmentProbeResult([], [])),
+                manifestStore: new InMemoryManifestStore(),
+                recoveryPointStore: new RecordingRecoveryPointStore(),
+                operationJournal: new RecordingOperationJournal(),
+                activationLink: link,
+                healthCheck: new QueuedRuntimeHealthCheck(true, false),
+                managerPaths: ManagerPaths.Resolve(root),
+                runtimeRoot: Path.Combine(root, "runtimes"),
+                runtimeProviders: [provider],
+                runtimeCommandRunner: runner);
+            var firstPreview = await manager.PreviewRuntimeInstallAsync(
+                provider.Descriptor.Id,
+                "7.6.5");
+            var first = await manager.InstallRuntimeAsync(firstPreview);
+            var secondPreview = await manager.PreviewRuntimeInstallAsync(
+                provider.Descriptor.Id,
+                "7.6.6");
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.InstallRuntimeAsync(secondPreview));
+
+            Assert.Equal(
+                first.Manifest.Location,
+                await link.GetTargetAsync(
+                    firstPreview.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class StubEnvironmentProbe(EnvironmentProbeResult result)
         : IEnvironmentProbe
     {
@@ -204,6 +275,58 @@ public sealed class PowerShellRuntimeProviderTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class TwoVersionPowerShellProvider : IRuntimeProvider
+    {
+        public RuntimeProviderDescriptor Descriptor { get; } = new(
+            "test-powershell",
+            "PowerShell 7",
+            EnvironmentAssetKind.Shell,
+            RuntimeProviderMode.Installable,
+            DiscoverySourceInfo.RuntimeProvider,
+            "https://example.test/powershell",
+            "MIT",
+            RuntimeInstallStrategy.OfficialArchive,
+            [
+                new RuntimeArtifactDescriptor(
+                    "7.6.5",
+                    "https://example.test/powershell/7.6.5",
+                    "MIT",
+                    "sha-7.6.5",
+                    RuntimeInstallStrategy.OfficialArchive,
+                    ["win-x64"],
+                    "https://example.test/powershell/7.6.5.zip"),
+                new RuntimeArtifactDescriptor(
+                    "7.6.6",
+                    "https://example.test/powershell/7.6.6",
+                    "MIT",
+                    "sha-7.6.6",
+                    RuntimeInstallStrategy.OfficialArchive,
+                    ["win-x64"],
+                    "https://example.test/powershell/7.6.6.zip")
+            ]);
+
+        public RuntimeInstallCommand CreateInstallCommand(
+            RuntimeInstallContext context)
+        {
+            return new RuntimeInstallCommand(
+                "test-pwsh-installer",
+                ["install", context.Artifact.Version],
+                context.InstallRoot);
+        }
+
+        public string GetExecutableRelativePath(
+            RuntimeArtifactDescriptor artifact)
+        {
+            return "pwsh.exe";
+        }
+
+        public IReadOnlyList<RuntimeStateFile> CreateStateFiles(
+            RuntimeStateBindingContext context)
+        {
+            return [];
         }
     }
 
