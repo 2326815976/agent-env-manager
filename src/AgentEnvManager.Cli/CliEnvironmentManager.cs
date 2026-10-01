@@ -38,6 +38,7 @@ internal interface ICliEnvironmentManager
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default);
 
     Task<InstalledRuntime> InstallRuntimeAsync(
@@ -149,12 +150,14 @@ internal sealed class EnvironmentManagerCliAdapter(
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default)
     {
         return manager.PreviewRuntimeInstallAsync(
             providerId,
             version,
             mirrorUrl,
+            installRoot,
             cancellationToken);
     }
 

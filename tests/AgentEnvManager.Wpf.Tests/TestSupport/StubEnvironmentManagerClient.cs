@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.Inspection;
@@ -80,6 +81,59 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
         throw new NotSupportedException();
     }
 
+    public virtual Task<EnvironmentDeletionPreview>
+        PreviewEnvironmentDeletionAsync(
+            EnvironmentFingerprint fingerprint,
+            IReadOnlyList<string>? associatedState = null,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<OperationRecord> QuarantineEnvironmentAsync(
+        EnvironmentDeletionPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<IReadOnlyList<QuarantinedEnvironment>>
+        ListQuarantinedEnvironmentsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<EnvironmentRestorePreview>
+        PreviewQuarantineRestoreAsync(
+            string quarantineId,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        EnvironmentRestorePreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task PermanentDeleteAsync(
+        PermanentDeletePreview preview,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
     public virtual IReadOnlyList<RuntimeProviderDescriptor>
         DescribeRuntimeProviders()
     {
@@ -90,6 +144,7 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
@@ -98,6 +153,30 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
     public virtual Task<InstalledRuntime> InstallRuntimeAsync(
         RuntimeInstallPreview preview,
         CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

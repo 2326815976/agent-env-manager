@@ -1,0 +1,106 @@
+AgentEnvManager 使用说明
+=======================
+
+适用范围
+--------
+Windows 11 x64。程序为自包含发布，不要求预装 .NET。
+
+启动软件
+--------
+1. 双击 app\AgentEnvManager.Wpf.exe 启动图形界面。
+2. 命令行工具位于 app\cli\AgentEnvManager.Cli.exe。
+3. 命令行查看帮助：AgentEnvManager.Cli.exe --help
+
+首次使用
+--------
+1. 点击“扫描”，查看 PATH、运行时、Agent 配置环境和冲突。
+2. 在“环境清单”中选择目标，点击“预览纳管”。
+3. 确认影响范围后点击“确认纳管”。
+4. 在“操作中心”查看操作记录和恢复点。
+
+运行时管理
+----------
+1. 打开“运行时管理”，点击“加载提供者”。
+2. 选择提供者和版本；需要镜像时可填写镜像地址。
+3. 点击“预览安装”，确认安装目录、影响范围和恢复点。
+4. 点击“确认安装”。完成后操作中心和恢复点会自动刷新。
+5. 离线安装：选择提供者和版本，填写本地制品路径，点击“导入并校验”。
+6. 如需指定位置，在“安装目录”填写绝对路径或点击“选择”；留空时使用
+   管理器数据根目录。自定义目录必须由本程序创建，回滚时只删除带有
+   管理器所有权标记的目录。
+
+环境变量管理
+------------
+1. 打开“环境变量”，点击“加载环境变量”。
+2. 勾选需要写入用户 PATH 的已纳管入口。
+3. 只可编辑以 AGENT_ENV_MANAGER_ 开头的管理器变量。
+4. 点击“预览变更”，确认影响范围后点击“应用变更”。
+5. 应用前会创建恢复点；用户手改的 PATH 条目和无关变量不会被覆盖。
+
+迁移与回滚
+----------
+1. 在“环境清单”选择已纳管环境。
+2. 打开“迁移”，填写目标路径。
+3. 点击“预览迁移”，确认影响范围、恢复点和预期结果。
+4. 点击“确认迁移”。完成后环境清单、操作中心和恢复点会刷新。
+5. 需要恢复时，在“操作中心”选择成功或失败的迁移操作，点击“准备回滚”，
+   再点击“确认回滚”。
+
+Agent 绑定
+----------
+1. 打开“Agent 绑定”，选择 Agent。
+2. 点击“发现 Agent”，程序会尽量回填 Agent 配置环境和可执行文件。
+3. 选择运行时版本，并设置受管入口和工作区。
+4. 点击“预览绑定”，确认绑定文件和配置恢复点信息。
+5. 点击“执行绑定”，然后点击“健康检查”。
+6. 健康检查失败时，页面会显示是否已恢复原绑定。
+
+诊断包
+------
+1. 打开“诊断包”，点击“生成预览”。
+2. 逐项审阅脱敏后的诊断内容。
+3. 输入本地绝对路径，点击“导出到本地”。
+4. 诊断包不包含 Git 凭据、令牌或 SSH 私钥，默认不上传任何状态。
+
+命令行常用操作
+--------------
+runtimes
+runtime-install-preview <provider> <version> [--mirror <url>] [--install-dir <path>]
+runtime-install <provider> <version> [--mirror <url>] [--install-dir <path>] --confirm
+runtime-import <provider> <version> <artifact-path> --confirm
+migrate-preview <fingerprint> <destination>
+migrate <fingerprint> <destination> --confirm
+rollback-preview <operation-id>
+rollback <operation-id> --confirm
+agent-discover <agent> [--config-dir <path>] [--executable <path>]
+agent-bind-preview <agent> <binding-options>
+agent-bind <agent> <binding-options> --confirm
+agent-health <agent> <binding-options>
+diagnostics-preview
+diagnostics-export <local-zip-path>
+
+写入和删除前的确认
+------------------
+- 安装、导入、迁移、回滚、纳管和 Agent 绑定必须先预览再确认。
+- CLI 写操作必须带 --confirm。
+- 删除默认进入隔离区；永久清除需要再次确认。
+- 默认卸载保留状态、工具运行时、恢复点和 Agent 绑定。
+
+数据位置
+--------
+管理器状态：
+%LOCALAPPDATA%\AgentEnvManager
+
+运行时数据：
+%LOCALAPPDATA%\AgentEnvManager\data
+
+可用环境变量覆盖：
+AGENT_ENV_MANAGER_HOME
+AGENT_ENV_MANAGER_DATA_ROOT
+
+排查建议
+--------
+1. 操作失败时先查看页面状态提示和“操作中心”失败原因。
+2. 网络安装失败时检查网络、代理或改用镜像/离线制品。
+3. 可生成诊断包后人工审阅，再用于排查问题。
+4. 重要环境在迁移或删除前先确认存在有效恢复点。

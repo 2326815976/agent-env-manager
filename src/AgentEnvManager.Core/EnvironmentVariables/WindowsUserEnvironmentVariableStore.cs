@@ -36,6 +36,23 @@ public sealed class WindowsUserEnvironmentVariableStore
         }
     }
 
+    public Task<IReadOnlyList<string>> ListAsync(
+        string namePrefix,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var key = Registry.CurrentUser.OpenSubKey("Environment");
+        var names = key?
+            .GetValueNames()
+            .Where(name => name.StartsWith(
+                namePrefix,
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+            ?? [];
+        return Task.FromResult<IReadOnlyList<string>>(names);
+    }
+
     public Task SetAsync(
         string name,
         string? value,

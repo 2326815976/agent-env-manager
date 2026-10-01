@@ -117,6 +117,33 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
             chatGpt.Asset.Source.Description);
     }
 
+    [Fact]
+    public async Task InspectAsync_discovers_real_agent_configuration_roots()
+    {
+        var accessor = CreateAccessor();
+        accessor.SetVariable("CC_SWITCH_HOME", @"E:\Codex\.cc-switch");
+        accessor.AddDirectory(@"C:\Users\Test\.workbuddy");
+        accessor.AddDirectory(@"C:\Users\Test\WorkBuddy");
+        accessor.AddDirectory(@"C:\Users\Test\.marvis");
+        accessor.AddDirectory(@"E:\Codex\.cc-switch");
+
+        var report = await InspectAsync(accessor);
+
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "WorkBuddy");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "WorkBuddy 工作区");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "Marvis");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "CC Switch"
+                && item.Asset.Location == @"E:\Codex\.cc-switch");
+    }
+
     private static async Task<InspectionReport> InspectAsync(
         FakeWindowsEnvironmentAccessor accessor)
     {

@@ -7,8 +7,8 @@ namespace AgentEnvManager.Wpf;
 
 public sealed class AgentBindingViewModel : AsyncOperationViewModel
 {
-    private readonly IAgentBindingClient _client;
-    private readonly IRuntimeCenterClient? _runtimeClient;
+    private readonly IAgentDiscoveryClient _discoveryClient;
+    private readonly IAgentBindingClient _bindingClient;
     private readonly IFileSystemPicker? _filePicker;
     private string? _selectedAgent;
     private string _configurationDirectory = string.Empty;
@@ -29,26 +29,26 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
     private RuntimeSelectionOption? _selectedRuntimeOption;
 
     public AgentBindingViewModel(
-        IAgentBindingClient client,
-        IRuntimeCenterClient? runtimeClient = null,
+        IAgentDiscoveryClient discoveryClient,
+        IAgentBindingClient bindingClient,
+        IRuntimeCatalogClient runtimeCatalog,
         IFileSystemPicker? filePicker = null,
         Func<Task>? refreshOperations = null)
         : base(refreshOperations, "请选择 Agent 并填写绑定参数。")
     {
-        _client = client;
-        _runtimeClient = runtimeClient;
+        _discoveryClient = discoveryClient;
+        _bindingClient = bindingClient;
         _filePicker = filePicker;
         AvailableAgents = new ObservableCollection<string>(
-            client.DescribeAgentAdapters());
+            discoveryClient.DescribeAgentAdapters());
         AvailableRuntimeOptions =
             new ObservableCollection<RuntimeSelectionOption>(
-                runtimeClient?.DescribeRuntimeProviders()
+                runtimeCatalog.DescribeRuntimeProviders()
                     .SelectMany(provider =>
                         provider.Artifacts.Select(artifact =>
                             new RuntimeSelectionOption(
                                 provider.Name,
-                                artifact.Version)))
-                    ?? []);
+                                artifact.Version))));
         _selectedAgent = AvailableAgents.FirstOrDefault();
         DiscoverCommand = new RelayCommand(
             DiscoverAgentAsync,
@@ -255,7 +255,7 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
 
         await RunBusyAsync(async () =>
         {
-            var discovery = await _client.DiscoverAgentAsync(
+            var discovery = await _discoveryClient.DiscoverAgentAsync(
                 SelectedAgent,
                 new AgentDiscoveryRequest(
                     ConfigurationDirectory,
@@ -290,7 +290,7 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
 
         await RunBusyAsync(async () =>
         {
-            _pendingPlan = await _client.CreateAgentBindingPlanAsync(
+            _pendingPlan = await _bindingClient.CreateAgentBindingPlanAsync(
                 SelectedAgent!,
                 new AgentBindingRequest(
                     ConfigurationDirectory,
@@ -328,7 +328,7 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
         {
             try
             {
-                _boundBinding = await _client.BindAgentAsync(
+                _boundBinding = await _bindingClient.BindAgentAsync(
                     SelectedAgent!,
                     _pendingPlan);
                 RecoveryResult = _boundBinding.RecoveryPoint.Id;
@@ -357,7 +357,7 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
 
         await RunBusyAsync(async () =>
         {
-            var health = await _client.CheckAgentHealthAsync(
+            var health = await _bindingClient.CheckAgentHealthAsync(
                 SelectedAgent!,
                 _boundBinding);
             HealthResult = health.IsHealthy

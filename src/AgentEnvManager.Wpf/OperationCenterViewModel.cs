@@ -9,7 +9,8 @@ namespace AgentEnvManager.Wpf;
 
 public sealed class OperationCenterViewModel : ObservableObject
 {
-    private readonly IEnvironmentManagerClient _client;
+    private readonly IOperationJournalClient _operations;
+    private readonly IEnvironmentDeletionClient _deletion;
     private OperationRecordRowViewModel? _selectedOperation;
     private bool _isBusy;
     private string _statusMessage = "尚未加载操作记录。";
@@ -20,9 +21,12 @@ public sealed class OperationCenterViewModel : ObservableObject
     private QuarantinedEnvironmentRowViewModel? _selectedQuarantine;
     private PermanentDeletePreview? _pendingPermanentDelete;
 
-    public OperationCenterViewModel(IEnvironmentManagerClient client)
+    public OperationCenterViewModel(
+        IOperationJournalClient operations,
+        IEnvironmentDeletionClient deletion)
     {
-        _client = client;
+        _operations = operations;
+        _deletion = deletion;
         RefreshCommand = new RelayCommand(
             RefreshAsync,
             () => !IsBusy,
@@ -138,22 +142,22 @@ public sealed class OperationCenterViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var operations = await _client.ListOperationsAsync();
+            var operations = await _operations.ListOperationsAsync();
             Operations.Replace(
                 operations.Select(
                     operation => new OperationRecordRowViewModel(operation)));
 
             var environmentPoints =
-                await _client.ListEnvironmentRecoveryPointsAsync();
+                await _operations.ListEnvironmentRecoveryPointsAsync();
             var variablePoints =
-                await _client.ListEnvironmentVariableRecoveryPointsAsync();
+                await _operations.ListEnvironmentVariableRecoveryPointsAsync();
             RecoveryPoints.Replace(
                 environmentPoints
                     .Select(point => RecoveryPointRowViewModel.From(point))
                     .Concat(variablePoints.Select(
                         point => RecoveryPointRowViewModel.From(point))));
             var quarantined =
-                await _client.ListQuarantinedEnvironmentsAsync();
+                await _deletion.ListQuarantinedEnvironmentsAsync();
             QuarantinedEnvironments.Replace(
                 quarantined.Select(
                     entry => new QuarantinedEnvironmentRowViewModel(entry)));
@@ -178,7 +182,7 @@ public sealed class OperationCenterViewModel : ObservableObject
 
     private async Task PrepareRollbackCoreAsync(string operationId)
     {
-        var plan = await _client.PreviewRollbackAsync(operationId);
+        var plan = await _operations.PreviewRollbackAsync(operationId);
         _pendingRollbackOperationId = plan.OperationId;
         RollbackTarget = plan.Target;
         RollbackImpact = $"{plan.Impact} 预期结果：{plan.ExpectedResult}";
@@ -197,9 +201,9 @@ public sealed class OperationCenterViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var preview = await _client.PreviewQuarantineRestoreAsync(
+            var preview = await _deletion.PreviewQuarantineRestoreAsync(
                 SelectedQuarantine.Id);
-            await _client.RestoreQuarantinedEnvironmentAsync(preview);
+            await _deletion.RestoreQuarantinedEnvironmentAsync(preview);
             await RefreshAsync();
             StatusMessage = $"隔离环境 {preview.QuarantineId} 已恢复。";
         }
@@ -216,7 +220,7 @@ public sealed class OperationCenterViewModel : ObservableObject
             return;
         }
 
-        _pendingPermanentDelete = await _client.PreviewPermanentDeleteAsync(
+        _pendingPermanentDelete = await _deletion.PreviewPermanentDeleteAsync(
             SelectedQuarantine.Id);
         PermanentDeleteImpact = _pendingPermanentDelete.Impact;
         RaiseCommandStates();
@@ -233,7 +237,7 @@ public sealed class OperationCenterViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await _client.PermanentDeleteAsync(
+            await _deletion.PermanentDeleteAsync(
                 _pendingPermanentDelete,
                 confirmed: true);
             _pendingPermanentDelete = null;
@@ -257,7 +261,7 @@ public sealed class OperationCenterViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var operation = await _client.RollbackOperationAsync(
+            var operation = await _operations.RollbackOperationAsync(
                 _pendingRollbackOperationId);
             await RefreshAsync();
             StatusMessage = $"操作 {operation.Id} 已回滚。";
@@ -359,7 +363,9 @@ public sealed class OperationRecordRowViewModel(OperationRecord operation)
         !string.IsNullOrWhiteSpace(operation.RecoveryPointId)
         && !string.IsNullOrWhiteSpace(operation.Target)
         && !string.IsNullOrWhiteSpace(operation.Impact)
-        && operation.State == OperationState.Failed;
+        && (operation.State == OperationState.Failed
+            || (operation.Type == OperationType.Migrate
+                && operation.State == OperationState.Succeeded));
 }
 
 public sealed record RecoveryPointRowViewModel(

@@ -1,8 +1,6 @@
 using AgentEnvManager.Core.Adoption;
-using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Deletion;
-using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
 
 namespace AgentEnvManager.Wpf.Tests;
@@ -13,7 +11,7 @@ public sealed class OperationCenterViewModelTests
     public async Task RefreshAsync_loads_operations_and_recovery_points()
     {
         var client = new StubClient();
-        var viewModel = new OperationCenterViewModel(client);
+        var viewModel = new OperationCenterViewModel(client, client);
 
         await viewModel.RefreshAsync();
 
@@ -30,7 +28,7 @@ public sealed class OperationCenterViewModelTests
     public async Task RollbackSelectedAsync_calls_core_and_refreshes()
     {
         var client = new StubClient();
-        var viewModel = new OperationCenterViewModel(client);
+        var viewModel = new OperationCenterViewModel(client, client);
         await viewModel.RefreshAsync();
         viewModel.SelectedOperation = Assert.Single(viewModel.Operations);
 
@@ -61,20 +59,51 @@ public sealed class OperationCenterViewModelTests
                 "缺少元数据的旧操作",
                 "recovery-1")
         ];
-        var viewModel = new OperationCenterViewModel(client);
+        var viewModel = new OperationCenterViewModel(client, client);
 
         await viewModel.RefreshAsync();
 
         Assert.False(Assert.Single(viewModel.Operations).CanRollback);
     }
 
-    private sealed class StubClient : StubEnvironmentManagerClient
+    [Fact]
+    public async Task RefreshAsync_allows_rollback_for_succeeded_migration()
+    {
+        var client = new StubClient();
+        client.Operations =
+        [
+            new OperationRecord(
+                "migration-1",
+                OperationType.Migrate,
+                OperationState.Succeeded,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch,
+                "迁移 Node.js",
+                "recovery-1",
+                Target: @"D:\Runtimes\node-new",
+                Impact: "迁移后健康检查通过。",
+                PreviousTarget: @"D:\Runtimes\node",
+                SourceTarget: @"D:\Runtimes\node",
+                TargetIdentity: "node-24",
+                StableActivationPath: @"C:\Activation\node",
+                MigrationStrategy: "CopyAndVerify")
+        ];
+        var viewModel = new OperationCenterViewModel(client, client);
+        await viewModel.RefreshAsync();
+        var operation = Assert.Single(viewModel.Operations);
+
+        Assert.True(operation.CanRollback);
+    }
+
+    private sealed class StubClient
+        : IOperationJournalClient,
+          IEnvironmentDeletionClient
     {
         public string? RolledBackOperationId { get; private set; }
 
         public IReadOnlyList<OperationRecord>? Operations { get; set; }
 
-        public override Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Operations ??
@@ -92,7 +121,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public override Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
             ListEnvironmentRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
@@ -109,7 +138,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public override Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
             ListEnvironmentVariableRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
@@ -126,7 +155,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public override Task<OperationRecord> RollbackOperationAsync(
+        public Task<OperationRecord> RollbackOperationAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
@@ -140,7 +169,7 @@ public sealed class OperationCenterViewModelTests
                 "纳管 Node.js"));
         }
 
-        public override Task<OperationRollbackPlan> PreviewRollbackAsync(
+        public Task<OperationRollbackPlan> PreviewRollbackAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
@@ -150,40 +179,6 @@ public sealed class OperationCenterViewModelTests
                 "恢复纳管前状态。",
                 "recovery-1",
                 "环境资产恢复为操作前状态。"));
-        }
-
-        public override Task<InspectionReport> InspectAsync(
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Task<AdoptionPreview> PreviewAdoptionAsync(
-            EnvironmentFingerprint fingerprint,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Task<ManagedEnvironment> AdoptAsync(
-            AdoptionPreview preview,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
-            EnvironmentFingerprint fingerprint,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Task<OperationRecord> SwitchVersionAsync(
-            VersionSwitchPreview preview,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
         }
 
         public Task<EnvironmentDeletionPreview>

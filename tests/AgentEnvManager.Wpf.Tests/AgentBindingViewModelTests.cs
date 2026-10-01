@@ -11,7 +11,7 @@ public sealed class AgentBindingViewModelTests
     public async Task DiscoverAndPreview_displays_agent_and_recovery_point_information()
     {
         var client = new StubAgentClient();
-        var viewModel = new AgentBindingViewModel(client)
+        var viewModel = new AgentBindingViewModel(client, client, client)
         {
             ConfigurationDirectory = @"C:\Users\tester\.codex",
             Executable = @"C:\Apps\Codex\codex.exe",
@@ -43,7 +43,7 @@ public sealed class AgentBindingViewModelTests
             DiscoveryHome = @"C:\Users\tester\.codex",
             DiscoveryExecutable = @"C:\Apps\Codex\codex.exe"
         };
-        var viewModel = new AgentBindingViewModel(client);
+        var viewModel = new AgentBindingViewModel(client, client, client);
 
         await viewModel.DiscoverAgentAsync();
 
@@ -59,7 +59,7 @@ public sealed class AgentBindingViewModelTests
     public void Selecting_runtime_option_updates_runtime_fields()
     {
         var client = new StubAgentClient();
-        var viewModel = new AgentBindingViewModel(client, client);
+        var viewModel = new AgentBindingViewModel(client, client, client);
 
         viewModel.SelectedRuntimeOption =
             Assert.Single(viewModel.AvailableRuntimeOptions);
@@ -77,6 +77,7 @@ public sealed class AgentBindingViewModelTests
             Folder = @"D:\selected-folder"
         };
         var viewModel = new AgentBindingViewModel(
+            client,
             client,
             client,
             picker);
@@ -138,7 +139,7 @@ public sealed class AgentBindingViewModelTests
     private static AgentBindingViewModel CreateConfiguredViewModel(
         StubAgentClient client)
     {
-        return new AgentBindingViewModel(client)
+        return new AgentBindingViewModel(client, client, client)
         {
             ConfigurationDirectory = @"C:\Users\tester\.codex",
             Executable = @"C:\Apps\Codex\codex.exe",
@@ -149,8 +150,9 @@ public sealed class AgentBindingViewModelTests
     }
 
     private sealed class StubAgentClient
-        : IAgentBindingClient,
-          IRuntimeCenterClient
+        : IAgentDiscoveryClient,
+          IAgentBindingClient,
+          IRuntimeCatalogClient
     {
         public int BindCalls { get; private set; }
 
@@ -251,31 +253,6 @@ public sealed class AgentBindingViewModelTests
             DescribeRuntimeProviders()
         {
             return [new NodeRuntimeProvider().Descriptor];
-        }
-
-        public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
-            string providerId,
-            string version,
-            string? mirrorUrl,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<InstalledRuntime> InstallRuntimeAsync(
-            RuntimeInstallPreview preview,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
-            string providerId,
-            string version,
-            string sourcePath,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
         }
     }
 

@@ -26,16 +26,48 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
         return manager.DescribeRuntimeProviders();
     }
 
+    public Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return manager.InspectEnvironmentVariableEditorAsync(
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewManagedEnvironmentUpdateAsync(
+            managedEntries,
+            variableChanges,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.ApplyEnvironmentVariableUpdateAsync(
+            preview,
+            cancellationToken);
+    }
+
     public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default)
     {
         return manager.PreviewRuntimeInstallAsync(
             providerId,
             version,
             mirrorUrl,
+            installRoot,
             cancellationToken);
     }
 

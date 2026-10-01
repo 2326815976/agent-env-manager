@@ -22,11 +22,17 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel(IEnvironmentManagerClient client)
     {
         _client = client;
-        OperationCenter = new OperationCenterViewModel(client);
+        OperationCenter = new OperationCenterViewModel(
+            operations: client,
+            deletion: client);
         RuntimeCenter = new RuntimeCenterViewModel(
             client,
-            OperationCenter.RefreshAsync);
+            OperationCenter.RefreshAsync,
+            new WindowsFileSystemPicker());
         DiagnosticsPackage = new DiagnosticsPackageViewModel(
+            client,
+            OperationCenter.RefreshAsync);
+        EnvironmentVariables = new EnvironmentVariablesViewModel(
             client,
             OperationCenter.RefreshAsync);
         MigrationCenter = new MigrationCenterViewModel(
@@ -37,10 +43,11 @@ public sealed class MainViewModel : ObservableObject
                 await OperationCenter.RefreshAsync();
             });
         AgentBinding = new AgentBindingViewModel(
-            client,
-            client,
-            new WindowsFileSystemPicker(),
-            OperationCenter.RefreshAsync);
+            discoveryClient: client,
+            bindingClient: client,
+            runtimeCatalog: client,
+            filePicker: new WindowsFileSystemPicker(),
+            refreshOperations: OperationCenter.RefreshAsync);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -70,6 +77,8 @@ public sealed class MainViewModel : ObservableObject
     public RuntimeCenterViewModel RuntimeCenter { get; }
 
     public DiagnosticsPackageViewModel DiagnosticsPackage { get; }
+
+    public EnvironmentVariablesViewModel EnvironmentVariables { get; }
 
     public MigrationCenterViewModel MigrationCenter { get; }
 

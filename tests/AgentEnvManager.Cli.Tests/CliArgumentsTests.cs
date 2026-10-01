@@ -31,4 +31,22 @@ public sealed class CliArgumentsTests
         Assert.Equal("https://mirror.test/python", request.MirrorUrl);
         Assert.True(request.Confirmed);
     }
+
+    [Fact]
+    public void Parse_runtime_install_captures_install_directory()
+    {
+        var request = CliArguments.Parse(
+            [
+                "runtime-install-preview",
+                "python",
+                "3.13.7",
+                "--install-dir",
+                @"D:\AgentRuntimes\python-3.13.7"
+            ]);
+
+        Assert.Equal(CliAction.RuntimeInstallPreview, request.Action);
+        Assert.Equal(
+            @"D:\AgentRuntimes\python-3.13.7",
+            request.InstallRoot);
+    }
 }

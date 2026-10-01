@@ -4,7 +4,7 @@
 
 ## 功能概览
 
-- 只读环境体检：识别 PATH、系统路径、常见安装目录、注册表 App Paths、Agent 配置和 Conda 环境。
+- 只读环境体检：识别 PATH、系统路径、常见安装目录、注册表 App Paths、Codex、ChatGPT、WorkBuddy、CC Switch、Marvis 配置目录和 Conda 环境。
 - 已纳管环境：环境身份、manifest、恢复点、稳定激活路径和受管入口。
 - 运行时提供者：
   - Python：通过 `uv` 安装便携 CPython，支持官方镜像和离线导入。
@@ -13,6 +13,7 @@
   - PowerShell 7：官方便携 ZIP，版本级模块路径和 profile 状态。
 - 制品缓存：官方 SHA-256 校验、镜像校验、离线导入和重复安装。
 - Agent 适配器：Codex 和 ChatGPT 配置绑定、真实健康检查与回滚。
+- 环境变量编辑器：只编辑管理器拥有的 `AGENT_ENV_MANAGER_*` 变量，并安全切换已纳管环境的受管 PATH 入口。
 - 诊断包：本地生成、脱敏、可审阅，默认无遥测、无自动上传。
 - 自包含发布：win-x64 便携版和当前用户安装脚本。
 
@@ -44,8 +45,8 @@ dotnet run --project .\src\AgentEnvManager.Wpf
 dotnet run --project .\src\AgentEnvManager.Cli -- inspect
 dotnet run --project .\src\AgentEnvManager.Cli -- adopt <fingerprint> --confirm
 dotnet run --project .\src\AgentEnvManager.Cli -- runtimes
-dotnet run --project .\src\AgentEnvManager.Cli -- runtime-install-preview python 3.13.7
-dotnet run --project .\src\AgentEnvManager.Cli -- runtime-install python 3.13.7 --confirm
+dotnet run --project .\src\AgentEnvManager.Cli -- runtime-install-preview python 3.13.7 --install-dir D:\AgentRuntimes\python-3.13.7
+dotnet run --project .\src\AgentEnvManager.Cli -- runtime-install python 3.13.7 --install-dir D:\AgentRuntimes\python-3.13.7 --confirm
 dotnet run --project .\src\AgentEnvManager.Cli -- runtime-import python 3.13.7 .\python.tar.gz --confirm
 dotnet run --project .\src\AgentEnvManager.Cli -- migrate-preview <fingerprint> D:\Runtimes\python
 dotnet run --project .\src\AgentEnvManager.Cli -- migrate <fingerprint> D:\Runtimes\python --confirm

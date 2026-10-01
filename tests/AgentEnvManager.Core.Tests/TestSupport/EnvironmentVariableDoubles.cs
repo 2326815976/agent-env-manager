@@ -38,6 +38,19 @@ internal sealed class RecordingUserEnvironmentVariableStore(
         return Task.FromResult(_expandableNames.Contains(name));
     }
 
+    public Task<IReadOnlyList<string>> ListAsync(
+        string namePrefix,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<string>>(
+            _values.Keys
+                .Where(name => name.StartsWith(
+                    namePrefix,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+    }
+
     public Task SetAsync(
         string name,
         string? value,

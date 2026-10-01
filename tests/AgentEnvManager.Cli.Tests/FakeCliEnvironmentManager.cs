@@ -68,6 +68,8 @@ internal sealed class FakeCliEnvironmentManager : ICliEnvironmentManager
 
     public string? LastRuntimeMirrorUrl { get; private set; }
 
+    public string? LastRuntimeInstallRoot { get; private set; }
+
     public int ImportCalls { get; private set; }
 
     public RuntimeArtifactCacheEntry ImportedArtifact { get; set; } =
@@ -124,11 +126,13 @@ internal sealed class FakeCliEnvironmentManager : ICliEnvironmentManager
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default)
     {
         LastRuntimeProviderId = providerId;
         LastRuntimeVersion = version;
         LastRuntimeMirrorUrl = mirrorUrl;
+        LastRuntimeInstallRoot = installRoot;
         return Task.FromResult(RuntimeInstallPreview);
     }
 

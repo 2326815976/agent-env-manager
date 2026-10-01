@@ -191,7 +191,8 @@ public sealed class ChatGptAgentAdapterTests
                 new RecordingProcessRunner(
                     new Dictionary<string, AgentProcessResult>()),
                 new FileAgentConfigurationBackupStore(
-                    Path.Combine(root, "backups")));
+                    Path.Combine(root, "backups")),
+                new StubExecutableLocator(null));
 
             var missingExecutable = await adapter.DiscoverAsync(
                 new AgentDiscoveryRequest(configurationDirectory));
@@ -208,6 +209,44 @@ public sealed class ChatGptAgentAdapterTests
             Assert.False(incomplete.IsInstalled);
             Assert.True(discovered.IsInstalled);
             Assert.Equal(executable, discovered.Executable);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_locates_chatgpt_when_not_supplied()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var configurationDirectory = Path.Combine(root, "codex-home");
+            var applicationDirectory = Path.Combine(root, "app");
+            var bundledCodex = Path.Combine(
+                applicationDirectory,
+                "resources",
+                "codex.exe");
+            var executable = Path.Combine(
+                applicationDirectory,
+                "ChatGPT.exe");
+            Directory.CreateDirectory(configurationDirectory);
+            Directory.CreateDirectory(Path.GetDirectoryName(bundledCodex)!);
+            File.WriteAllText(executable, string.Empty);
+            File.WriteAllText(bundledCodex, string.Empty);
+            var adapter = new ChatGptAgentAdapter(
+                new RecordingProcessRunner(
+                    new Dictionary<string, AgentProcessResult>()),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                new StubExecutableLocator(executable));
+
+            var discovery = await adapter.DiscoverAsync(
+                new AgentDiscoveryRequest(configurationDirectory));
+
+            Assert.True(discovery.IsInstalled);
+            Assert.Equal(executable, discovery.Executable);
         }
         finally
         {
@@ -308,6 +347,15 @@ public sealed class ChatGptAgentAdapterTests
                     ? result
                     : throw new InvalidOperationException(
                         $"未配置进程结果: {executable}"));
+        }
+    }
+
+    private sealed class StubExecutableLocator(string? executable)
+        : IExecutableLocator
+    {
+        public string? FindExecutable(string command)
+        {
+            return command == "ChatGPT" ? executable : null;
         }
     }
 }

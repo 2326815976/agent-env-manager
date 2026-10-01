@@ -242,6 +242,7 @@ public sealed class EnvironmentManager
             providerId,
             version,
             mirrorUrl: null,
+            installRoot: null,
             cancellationToken);
     }
 
@@ -255,6 +256,22 @@ public sealed class EnvironmentManager
             providerId,
             version,
             mirrorUrl,
+            installRoot: null,
+            cancellationToken);
+    }
+
+    public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
+        string providerId,
+        string version,
+        string? mirrorUrl,
+        string? installRoot,
+        CancellationToken cancellationToken = default)
+    {
+        return _runtimeInstallation.PreviewAsync(
+            providerId,
+            version,
+            mirrorUrl,
+            installRoot,
             cancellationToken);
     }
 
@@ -724,12 +741,31 @@ public sealed class EnvironmentManager
             cancellationToken);
     }
 
+    public Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _environmentVariables.InspectAsync(cancellationToken);
+    }
+
     public Task<EnvironmentVariableUpdatePreview> PreviewManagedVariableUpdateAsync(
         IReadOnlyList<EnvironmentVariableChange> changes,
         CancellationToken cancellationToken = default)
     {
         return _environmentVariables.PreviewManagedVariablesAsync(
             changes,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default)
+    {
+        return _environmentVariables.PreviewManagedEnvironmentUpdateAsync(
+            managedEntries,
+            variableChanges,
             cancellationToken);
     }
 

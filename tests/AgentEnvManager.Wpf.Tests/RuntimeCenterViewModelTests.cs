@@ -42,6 +42,7 @@ public sealed class RuntimeCenterViewModelTests
         viewModel.SelectedArtifact =
             Assert.Single(viewModel.SelectedProvider.Artifacts);
         viewModel.MirrorUrl = "https://mirror.test/python";
+        viewModel.InstallRoot = @"D:\AgentRuntimes\python-3.13.7";
 
         await viewModel.PreviewInstallAsync();
 
@@ -50,8 +51,13 @@ public sealed class RuntimeCenterViewModelTests
         Assert.Equal(
             "https://mirror.test/python",
             client.LastMirrorUrl);
+        Assert.Equal(
+            @"D:\AgentRuntimes\python-3.13.7",
+            client.LastInstallRoot);
         Assert.Equal("安装 Python 3.13.7。", viewModel.InstallImpact);
-        Assert.Equal(@"D:\runtimes\python\3.13.7", viewModel.PendingTarget);
+        Assert.Equal(
+            @"D:\AgentRuntimes\python-3.13.7",
+            viewModel.PendingTarget);
         Assert.Equal("recovery-install", viewModel.PendingRecoveryPoint);
 
         await viewModel.InstallAsync();
@@ -119,16 +125,20 @@ public sealed class RuntimeCenterViewModelTests
 
         public int InstallCalls { get; private set; }
 
+        public string? LastInstallRoot { get; private set; }
+
         public override Task<RuntimeInstallPreview>
             PreviewRuntimeInstallAsync(
                 string providerId,
                 string version,
                 string? mirrorUrl,
+                string? installRoot,
                 CancellationToken cancellationToken = default)
         {
             LastProviderId = providerId;
             LastVersion = version;
             LastMirrorUrl = mirrorUrl;
+            LastInstallRoot = installRoot;
             var provider = Providers.Single(item => item.Id == providerId);
             var artifact = provider.Artifacts.Single(
                 item => item.Version == version);
@@ -139,9 +149,10 @@ public sealed class RuntimeCenterViewModelTests
                     "runtime-python-3.13.7-win-x64"),
                 new Core.Adoption.EnvironmentFingerprint(
                     "runtime-python-3.13.7-win-x64"),
-                @"D:\runtimes\python\3.13.7",
-                @"D:\runtimes\python\3.13.7\python",
-                @"D:\runtimes\python\3.13.7\python\python.exe",
+                installRoot ?? @"D:\runtimes\python\3.13.7",
+                (installRoot ?? @"D:\runtimes\python\3.13.7") + @"\python",
+                (installRoot ?? @"D:\runtimes\python\3.13.7") +
+                @"\python\python.exe",
                 "python-activation",
                 @"C:\activation\python\current",
                 @"C:\shims\python",

@@ -1,9 +1,9 @@
-using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
-using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Diagnostics;
+using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -11,14 +11,18 @@ using AgentEnvManager.Core.Runtimes;
 
 namespace AgentEnvManager.Wpf;
 
-public interface IRuntimeCenterClient
+public interface IRuntimeCatalogClient
 {
     IReadOnlyList<RuntimeProviderDescriptor> DescribeRuntimeProviders();
+}
 
+public interface IRuntimeCenterClient : IRuntimeCatalogClient
+{
     Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
         string providerId,
         string version,
         string? mirrorUrl,
+        string? installRoot,
         CancellationToken cancellationToken = default);
 
     Task<InstalledRuntime> InstallRuntimeAsync(
@@ -55,7 +59,25 @@ public interface IMigrationClient
         CancellationToken cancellationToken = default);
 }
 
-public interface IAgentBindingClient
+public interface IEnvironmentVariablesClient
+{
+    Task<EnvironmentVariableEditorSnapshot>
+        InspectEnvironmentVariableEditorAsync(
+            CancellationToken cancellationToken = default);
+
+    Task<EnvironmentVariableUpdatePreview>
+        PreviewManagedEnvironmentUpdateAsync(
+            IReadOnlyList<string>? managedEntries,
+            IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+            CancellationToken cancellationToken = default);
+
+    Task<EnvironmentVariableTransactionResult>
+        ApplyEnvironmentVariableUpdateAsync(
+            EnvironmentVariableUpdatePreview preview,
+            CancellationToken cancellationToken = default);
+}
+
+public interface IAgentDiscoveryClient
 {
     IReadOnlyList<string> DescribeAgentAdapters();
 
@@ -63,7 +85,10 @@ public interface IAgentBindingClient
         string agentName,
         AgentDiscoveryRequest request,
         CancellationToken cancellationToken = default);
+}
 
+public interface IAgentBindingClient
+{
     Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
         string agentName,
         AgentBindingRequest request,
@@ -80,11 +105,70 @@ public interface IAgentBindingClient
         CancellationToken cancellationToken = default);
 }
 
+public interface IOperationJournalClient
+{
+    Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        ListEnvironmentRecoveryPointsAsync(
+            CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        ListEnvironmentVariableRecoveryPointsAsync(
+            CancellationToken cancellationToken = default);
+
+    Task<OperationRollbackPlan> PreviewRollbackAsync(
+        string operationId,
+        CancellationToken cancellationToken = default);
+
+    Task<OperationRecord> RollbackOperationAsync(
+        string operationId,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IEnvironmentDeletionClient
+{
+    Task<EnvironmentDeletionPreview> PreviewEnvironmentDeletionAsync(
+        EnvironmentFingerprint fingerprint,
+        IReadOnlyList<string>? associatedState = null,
+        CancellationToken cancellationToken = default);
+
+    Task<OperationRecord> QuarantineEnvironmentAsync(
+        EnvironmentDeletionPreview preview,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<QuarantinedEnvironment>>
+        ListQuarantinedEnvironmentsAsync(
+            CancellationToken cancellationToken = default);
+
+    Task<EnvironmentRestorePreview> PreviewQuarantineRestoreAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default);
+
+    Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        EnvironmentRestorePreview preview,
+        CancellationToken cancellationToken = default);
+
+    Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default);
+
+    Task PermanentDeleteAsync(
+        PermanentDeletePreview preview,
+        bool confirmed,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IEnvironmentManagerClient
     : IRuntimeCenterClient,
       IDiagnosticsPackageClient,
+      IEnvironmentVariablesClient,
       IMigrationClient,
-      IAgentBindingClient
+      IAgentDiscoveryClient,
+      IAgentBindingClient,
+      IOperationJournalClient,
+      IEnvironmentDeletionClient
 {
     Task<InspectionReport> InspectAsync(
         CancellationToken cancellationToken = default);
@@ -103,75 +187,5 @@ public interface IEnvironmentManagerClient
 
     Task<OperationRecord> SwitchVersionAsync(
         VersionSwitchPreview preview,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<AdoptionRecoveryPoint>>
-        ListEnvironmentRecoveryPointsAsync(
-            CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
-        ListEnvironmentVariableRecoveryPointsAsync(
-            CancellationToken cancellationToken = default);
-
-    Task<OperationRecord> RollbackOperationAsync(
-        string operationId,
-        CancellationToken cancellationToken = default);
-
-    Task<EnvironmentDeletionPreview> PreviewEnvironmentDeletionAsync(
-        EnvironmentFingerprint fingerprint,
-        IReadOnlyList<string>? associatedState = null,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task<OperationRecord> QuarantineEnvironmentAsync(
-        EnvironmentDeletionPreview preview,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task<IReadOnlyList<QuarantinedEnvironment>>
-        ListQuarantinedEnvironmentsAsync(
-            CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult<IReadOnlyList<QuarantinedEnvironment>>([]);
-    }
-
-    Task<EnvironmentRestorePreview> PreviewQuarantineRestoreAsync(
-        string quarantineId,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
-        EnvironmentRestorePreview preview,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
-        string quarantineId,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task PermanentDeleteAsync(
-        PermanentDeletePreview preview,
-        bool confirmed,
-        CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    Task<OperationRollbackPlan> PreviewRollbackAsync(
-        string operationId,
         CancellationToken cancellationToken = default);
 }

@@ -27,7 +27,9 @@ public sealed class CliApplicationTests
                 "python",
                 "3.13.7",
                 "--mirror",
-                "https://mirror.test/python"
+                "https://mirror.test/python",
+                "--install-dir",
+                @"D:\AgentRuntimes\python-3.13.7"
             ],
             () => manager,
             output,
@@ -44,6 +46,9 @@ public sealed class CliApplicationTests
         Assert.Equal(
             "https://mirror.test/python",
             manager.LastRuntimeMirrorUrl);
+        Assert.Equal(
+            @"D:\AgentRuntimes\python-3.13.7",
+            manager.LastRuntimeInstallRoot);
         Assert.Contains("--confirm", error.ToString());
     }
 

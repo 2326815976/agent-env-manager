@@ -27,6 +27,21 @@ internal sealed class RuntimeInstallationService(
         string? mirrorUrl,
         CancellationToken cancellationToken = default)
     {
+        return await PreviewAsync(
+            providerId,
+            version,
+            mirrorUrl,
+            installRoot: null,
+            cancellationToken);
+    }
+
+    public async Task<RuntimeInstallPreview> PreviewAsync(
+        string providerId,
+        string version,
+        string? mirrorUrl,
+        string? installRoot,
+        CancellationToken cancellationToken = default)
+    {
         var provider = GetProvider(providerId);
         var artifact = provider.Descriptor.Artifacts.SingleOrDefault(
             candidate => string.Equals(
@@ -41,10 +56,10 @@ internal sealed class RuntimeInstallationService(
             provider.Descriptor.Id,
             artifact.Version);
         var identity = new EnvironmentIdentity(fingerprint.Value);
-        var installRoot = Path.Combine(
-            runtimeRoot,
-            provider.Descriptor.Id,
-            artifact.Version);
+        var resolvedInstallRoot = ResolveInstallRoot(
+            provider,
+            artifact,
+            installRoot);
         var useCachedArtifact = artifact.InstallStrategy
             == RuntimeInstallStrategy.UvManagedDownload
             && await artifactCache.TryGetCachedAsync(
@@ -54,12 +69,12 @@ internal sealed class RuntimeInstallationService(
             artifact,
             useCachedArtifact);
         var location = Path.Combine(
-            installRoot,
+            resolvedInstallRoot,
             Path.GetDirectoryName(executableRelativePath)
                 ?? throw new InvalidOperationException(
                     "运行时可执行文件相对路径无效。"));
         var executablePath = Path.Combine(
-            installRoot,
+            resolvedInstallRoot,
             executableRelativePath);
         var asset = new EnvironmentAsset(
             provider.Descriptor.Kind,
@@ -90,7 +105,7 @@ internal sealed class RuntimeInstallationService(
                 artifact,
                 existing.Identity,
                 existing.Fingerprint,
-                installRoot,
+                resolvedInstallRoot,
                 existing.Location,
                 Path.Combine(
                     existing.Location,
@@ -104,7 +119,7 @@ internal sealed class RuntimeInstallationService(
                 isCachedArtifactAvailable: useCachedArtifact);
         }
 
-        if (Directory.Exists(installRoot)
+        if (Directory.Exists(resolvedInstallRoot)
             || File.Exists(executablePath))
         {
             throw new InvalidOperationException(
@@ -115,7 +130,7 @@ internal sealed class RuntimeInstallationService(
             stableActivationPath,
             cancellationToken);
         var impact =
-            $"安装 {provider.Descriptor.Name} {artifact.Version} 到 {installRoot}；" +
+            $"安装 {provider.Descriptor.Name} {artifact.Version} 到 {resolvedInstallRoot}；" +
             "安装或健康检查失败不会改变当前激活版本。";
         var adoptionPreview = new AdoptionPreview(
             fingerprint,
@@ -131,7 +146,7 @@ internal sealed class RuntimeInstallationService(
             OperationType.Install,
             $"安装 {provider.Descriptor.Name} {artifact.Version}",
             timeProvider,
-            target: installRoot,
+            target: resolvedInstallRoot,
             impact: impact,
             expectedResult:
                 $"{provider.Descriptor.Name} {artifact.Version} 可通过受管入口调用。");
@@ -156,7 +171,7 @@ internal sealed class RuntimeInstallationService(
             artifact,
             identity,
             fingerprint,
-            installRoot,
+            resolvedInstallRoot,
             location,
             executablePath,
             activationKey.Value,
@@ -168,6 +183,54 @@ internal sealed class RuntimeInstallationService(
             recoveryPoint.Id,
             mirrorUrl,
             useCachedArtifact);
+    }
+
+    private string ResolveInstallRoot(
+        IRuntimeProvider provider,
+        RuntimeArtifactDescriptor artifact,
+        string? requestedInstallRoot)
+    {
+        if (string.IsNullOrWhiteSpace(requestedInstallRoot))
+        {
+            return Path.Combine(
+                runtimeRoot,
+                provider.Descriptor.Id,
+                artifact.Version);
+        }
+
+        if (!Path.IsPathFullyQualified(requestedInstallRoot))
+        {
+            throw new InvalidOperationException(
+                "运行时安装目录必须是完全限定路径。");
+        }
+
+        var fullPath = Path.GetFullPath(requestedInstallRoot)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var pathRoot = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrWhiteSpace(pathRoot)
+            || string.Equals(
+                fullPath,
+                pathRoot.TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "运行时安装目录不能是磁盘根目录。");
+        }
+
+        var windowsDirectory = Path.GetFullPath(
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.Windows));
+        if (IsPathEqualOrDescendant(fullPath, windowsDirectory))
+        {
+            throw new InvalidOperationException(
+                "运行时安装目录不能位于 Windows 系统目录中。");
+        }
+
+        return fullPath;
     }
 
     public async Task<InstalledRuntime> InstallAsync(
@@ -286,6 +349,11 @@ internal sealed class RuntimeInstallationService(
                     $"安装后未找到可执行文件: {preview.ExecutablePath}");
             }
 
+            File.WriteAllText(
+                Path.Combine(
+                    preview.InstallRoot,
+                    ".agent-env-manager-owned"),
+                preview.Identity.Value);
             RemoveTopLevelReparsePoints(preview.InstallRoot);
             savedManifest = await manifestStore.SaveAsync(
                 CreateManifest(preview, operation),
@@ -636,7 +704,9 @@ internal sealed class RuntimeInstallationService(
         if (!string.IsNullOrWhiteSpace(installRoot)
             && Directory.Exists(installRoot))
         {
-            DeleteInstallRoot(installRoot);
+            DeleteInstallRoot(
+                installRoot,
+                allowCustomRoot: true);
         }
 
         if (!string.IsNullOrWhiteSpace(stateDirectory)
@@ -648,23 +718,30 @@ internal sealed class RuntimeInstallationService(
         await RebuildIndexAsync(cancellationToken);
     }
 
-    private void DeleteInstallRoot(string installRoot)
+    private void DeleteInstallRoot(
+        string installRoot,
+        bool allowCustomRoot = false)
     {
         var fullRuntimeRoot = Path.GetFullPath(runtimeRoot);
         var fullInstallRoot = Path.GetFullPath(installRoot);
-        var allowedPrefix = fullRuntimeRoot.EndsWith(
-            Path.DirectorySeparatorChar)
-            ? fullRuntimeRoot
-            : fullRuntimeRoot + Path.DirectorySeparatorChar;
-        if (!fullInstallRoot.StartsWith(
-            allowedPrefix,
-            StringComparison.OrdinalIgnoreCase))
+        if (!IsPathEqualOrDescendant(
+                fullInstallRoot,
+                fullRuntimeRoot)
+            && !allowCustomRoot
+            && !HasOwnershipMarker(fullInstallRoot))
         {
             throw new InvalidOperationException(
-                "拒绝删除运行时根目录之外的路径。");
+                "拒绝删除非管理器所有的运行时目录。");
         }
 
         DeleteDirectoryTree(fullInstallRoot);
+    }
+
+    private static bool HasOwnershipMarker(string installRoot)
+    {
+        return File.Exists(Path.Combine(
+            installRoot,
+            ".agent-env-manager-owned"));
     }
 
     private void DeleteStateDirectory(string stateDirectory)
@@ -854,10 +931,10 @@ internal sealed class RuntimeInstallationService(
         var expectedFingerprint = CreateFingerprint(
             provider.Descriptor.Id,
             artifact.Version);
-        var expectedInstallRoot = Path.Combine(
-            runtimeRoot,
-            provider.Descriptor.Id,
-            artifact.Version);
+        var expectedInstallRoot = ResolveInstallRoot(
+            provider,
+            artifact,
+            preview.InstallRoot);
         var executableRelativePath = provider.GetExecutableRelativePath(
             artifact,
             preview.IsCachedArtifactAvailable
@@ -904,6 +981,27 @@ internal sealed class RuntimeInstallationService(
             throw new InvalidOperationException(
                 "安装计划已过期，请重新预览。");
         }
+    }
+
+    private static bool IsPathEqualOrDescendant(
+        string path,
+        string root)
+    {
+        var normalizedPath = Path.GetFullPath(path)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var normalizedRoot = Path.GetFullPath(root)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        return string.Equals(
+                normalizedPath,
+                normalizedRoot,
+                StringComparison.OrdinalIgnoreCase)
+            || normalizedPath.StartsWith(
+                normalizedRoot + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ValidateExistingPreviewAsync(

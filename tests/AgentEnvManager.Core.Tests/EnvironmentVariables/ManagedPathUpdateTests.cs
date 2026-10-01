@@ -9,6 +9,74 @@ namespace AgentEnvManager.Core.Tests.EnvironmentVariables;
 public sealed class ManagedPathUpdateTests
 {
     [Fact]
+    public async Task InspectEnvironmentVariableEditorAsync_lists_managed_paths_and_variables()
+    {
+        var managedRoot = ManagerPaths.Resolve().ShimDirectory;
+        var nodeEntry = Path.Combine(managedRoot, "node");
+        var pythonEntry = Path.Combine(managedRoot, "python");
+        var store = new RecordingUserEnvironmentVariableStore(
+            new Dictionary<string, string?>
+            {
+                ["Path"] = $@"C:\Tools;{nodeEntry}",
+                ["AGENT_ENV_MANAGER_MODE"] = "project"
+            });
+        var manager = new EnvironmentManager(
+            new StubEnvironmentProbe(
+                new EnvironmentProbeResult([], [])),
+            assetHasher: new FixedAssetHasher("asset-hash"),
+            manifestStore: CreateManifestStore(nodeEntry, pythonEntry),
+            userEnvironmentVariableStore: store);
+
+        var snapshot = await manager.InspectEnvironmentVariableEditorAsync();
+
+        var currentNode = Assert.Single(
+            snapshot.PathEntries,
+            entry => entry.ManagedEntryPath == nodeEntry);
+        Assert.True(currentNode.IsEnabled);
+        Assert.Contains(
+            snapshot.PathEntries,
+            entry =>
+                entry.ManagedEntryPath == pythonEntry
+                && !entry.IsEnabled);
+        var variable = Assert.Single(snapshot.Variables);
+        Assert.Equal("AGENT_ENV_MANAGER_MODE", variable.Name);
+        Assert.Equal("project", variable.Value);
+    }
+
+    [Fact]
+    public async Task PreviewManagedEnvironmentUpdateAsync_combines_path_and_variables()
+    {
+        var managedRoot = ManagerPaths.Resolve().ShimDirectory;
+        var nodeEntry = Path.Combine(managedRoot, "node");
+        var store = new RecordingUserEnvironmentVariableStore(
+            new Dictionary<string, string?>
+            {
+                ["Path"] = @"C:\Tools",
+                ["AGENT_ENV_MANAGER_MODE"] = "system"
+            });
+        var manager = new EnvironmentManager(
+            new StubEnvironmentProbe(
+                new EnvironmentProbeResult([], [])),
+            assetHasher: new FixedAssetHasher("asset-hash"),
+            manifestStore: CreateManifestStore(nodeEntry),
+            userEnvironmentVariableStore: store);
+
+        var preview = await manager.PreviewManagedEnvironmentUpdateAsync(
+            [nodeEntry],
+            [new EnvironmentVariableChange(
+                "AGENT_ENV_MANAGER_MODE",
+                "project")]);
+
+        Assert.Equal(
+            $@"C:\Tools;{nodeEntry}",
+            preview.DesiredValues["Path"]);
+        Assert.Equal(
+            "project",
+            preview.DesiredValues["AGENT_ENV_MANAGER_MODE"]);
+        Assert.Equal(2, preview.Changes.Count);
+    }
+
+    [Fact]
     public async Task PreviewManagedPathUpdateAsync_preserves_unknown_entries_and_order()
     {
         var managedRoot = ManagerPaths.Resolve().ShimDirectory;

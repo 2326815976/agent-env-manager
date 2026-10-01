@@ -15,9 +15,9 @@ internal static class CliMessages
         output.WriteLine("  agent-env-manager rebuild-index");
         output.WriteLine("  agent-env-manager runtimes");
         output.WriteLine(
-            "  agent-env-manager runtime-install-preview <provider> <version> [--mirror <url>]");
+            "  agent-env-manager runtime-install-preview <provider> <version> [--mirror <url>] [--install-dir <path>]");
         output.WriteLine(
-            "  agent-env-manager runtime-install <provider> <version> [--mirror <url>] --confirm");
+            "  agent-env-manager runtime-install <provider> <version> [--mirror <url>] [--install-dir <path>] --confirm");
         output.WriteLine(
             "  agent-env-manager runtime-import <provider> <version> <artifact-path> --confirm");
         output.WriteLine(

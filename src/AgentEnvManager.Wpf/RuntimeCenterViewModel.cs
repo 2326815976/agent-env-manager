@@ -1,3 +1,4 @@
+using System.IO;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentEnvManager.Core.Runtimes;
@@ -7,10 +8,12 @@ namespace AgentEnvManager.Wpf;
 public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
 {
     private readonly IRuntimeCenterClient _client;
+    private readonly IFileSystemPicker? _filePicker;
     private RuntimeProviderRowViewModel? _selectedProvider;
     private RuntimeArtifactRowViewModel? _selectedArtifact;
     private RuntimeInstallPreview? _pendingInstall;
     private string _mirrorUrl = string.Empty;
+    private string _installRoot = string.Empty;
     private string _installImpact = string.Empty;
     private string _pendingTarget = string.Empty;
     private string _pendingRecoveryPoint = string.Empty;
@@ -19,10 +22,12 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
 
     public RuntimeCenterViewModel(
         IRuntimeCenterClient client,
-        Func<Task>? refreshOperations = null)
+        Func<Task>? refreshOperations = null,
+        IFileSystemPicker? filePicker = null)
         : base(refreshOperations, "尚未加载运行时提供者。")
     {
         _client = client;
+        _filePicker = filePicker;
         LoadProvidersCommand = new RelayCommand(
             LoadProvidersAsync,
             () => !IsBusy,
@@ -34,6 +39,10 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         InstallCommand = new RelayCommand(
             InstallAsync,
             () => !IsBusy && _pendingInstall is not null,
+            HandleException);
+        SelectInstallRootCommand = new RelayCommand(
+            SelectInstallRootAsync,
+            () => !IsBusy && _filePicker is not null,
             HandleException);
         ImportArtifactCommand = new RelayCommand(
             ImportArtifactAsync,
@@ -85,6 +94,18 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         }
     }
 
+    public string InstallRoot
+    {
+        get => _installRoot;
+        set
+        {
+            if (SetProperty(ref _installRoot, value))
+            {
+                ClearPendingInstall();
+            }
+        }
+    }
+
     public string InstallImpact
     {
         get => _installImpact;
@@ -127,6 +148,8 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
 
     public ICommand InstallCommand { get; }
 
+    public ICommand SelectInstallRootCommand { get; }
+
     public ICommand ImportArtifactCommand { get; }
 
     public Task LoadProvidersAsync()
@@ -158,7 +181,10 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
                 SelectedArtifact.Version,
                 string.IsNullOrWhiteSpace(MirrorUrl)
                     ? null
-                    : MirrorUrl);
+                    : MirrorUrl,
+                string.IsNullOrWhiteSpace(InstallRoot)
+                    ? null
+                    : InstallRoot);
             InstallImpact = _pendingInstall.Impact;
             PendingTarget = _pendingInstall.InstallRoot;
             PendingRecoveryPoint =
@@ -218,6 +244,19 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         });
     }
 
+    public Task SelectInstallRootAsync()
+    {
+        var selected = _filePicker?.SelectFolder(
+            "选择运行时安装目录",
+            InstallRoot);
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            InstallRoot = selected;
+        }
+
+        return Task.CompletedTask;
+    }
+
     private void HandleException(Exception exception)
     {
         SetError("运行时操作", exception);
@@ -228,6 +267,7 @@ public sealed class RuntimeCenterViewModel : AsyncOperationViewModel
         ((RelayCommand)LoadProvidersCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PreviewInstallCommand).RaiseCanExecuteChanged();
         ((RelayCommand)InstallCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)SelectInstallRootCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ImportArtifactCommand).RaiseCanExecuteChanged();
     }
 

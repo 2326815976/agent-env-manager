@@ -21,9 +21,150 @@ internal sealed class EnvironmentVariableService(
     private readonly ManagedPathEditor _pathEditor =
         new(managedPathRoot);
 
+    public async Task<EnvironmentVariableEditorSnapshot> InspectAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var currentPath = await store.GetAsync(
+            "Path",
+            cancellationToken);
+        var enabledEntries = _pathEditor
+            .ExtractManagedEntries(currentPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var manifests = await environmentManifestStore.ReadAllAsync(
+            cancellationToken);
+        var pathEntries = manifests
+            .Where(manifest =>
+                !string.IsNullOrWhiteSpace(manifest.ManagedEntryPath))
+            .GroupBy(
+                manifest => Path.GetFullPath(
+                    manifest.ManagedEntryPath),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var manifest = group
+                    .OrderByDescending(item => item.AdoptedAtUtc)
+                    .First();
+                return new EnvironmentVariableEditorPathEntry(
+                    manifest.Name,
+                    manifest.Version,
+                    group.Key,
+                    enabledEntries.Contains(group.Key));
+            })
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(
+                entry => entry.Version,
+                StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var variableNames = await store.ListAsync(
+            ManagedVariablePrefix,
+            cancellationToken);
+        var variables = new List<EnvironmentVariableEditorVariable>();
+        foreach (var name in variableNames)
+        {
+            variables.Add(new EnvironmentVariableEditorVariable(
+                name,
+                await store.GetAsync(name, cancellationToken),
+                await store.IsExpandableAsync(
+                    name,
+                    cancellationToken)));
+        }
+
+        return new EnvironmentVariableEditorSnapshot(
+            currentPath,
+            pathEntries,
+            variables);
+    }
+
     public async Task<EnvironmentVariableUpdatePreview> PreviewManagedPathUpdateAsync(
         IReadOnlyList<string> managedEntries,
         CancellationToken cancellationToken = default)
+    {
+        return await PreviewManagedEnvironmentUpdateAsync(
+            managedEntries,
+            variableChanges: null,
+            cancellationToken);
+    }
+
+    public async Task<EnvironmentVariableUpdatePreview> PreviewManagedVariablesAsync(
+        IReadOnlyList<EnvironmentVariableChange> changes,
+        CancellationToken cancellationToken = default)
+    {
+        return await PreviewManagedEnvironmentUpdateAsync(
+            managedEntries: null,
+            changes,
+            cancellationToken);
+    }
+
+    public async Task<EnvironmentVariableUpdatePreview> PreviewManagedEnvironmentUpdateAsync(
+        IReadOnlyList<string>? managedEntries,
+        IReadOnlyList<EnvironmentVariableChange>? variableChanges,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedVariables = variableChanges is null
+            ? []
+            : NormalizeManagedVariableChanges(variableChanges);
+        if (managedEntries is null && normalizedVariables.Count == 0)
+        {
+            throw new InvalidOperationException("没有可预览的环境变量变更。");
+        }
+
+        var originalValues = new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase);
+        var desiredValues = new Dictionary<string, string?>(
+            StringComparer.OrdinalIgnoreCase);
+        var expandableValues = new Dictionary<string, bool>(
+            StringComparer.OrdinalIgnoreCase);
+        var changes = new List<EnvironmentVariableChange>();
+
+        if (managedEntries is not null)
+        {
+            await ValidateManagedEntriesAsync(
+                managedEntries,
+                cancellationToken);
+            var originalPath = await store.GetAsync(
+                "Path",
+                cancellationToken);
+            var desiredPath = _pathEditor.Apply(
+                originalPath,
+                managedEntries);
+            originalValues["Path"] = originalPath;
+            desiredValues["Path"] = desiredPath;
+            expandableValues["Path"] = await store.IsExpandableAsync(
+                "Path",
+                cancellationToken);
+            changes.Add(new EnvironmentVariableChange(
+                "Path",
+                desiredPath));
+        }
+
+        foreach (var variableChange in normalizedVariables)
+        {
+            originalValues[variableChange.Name] = await store.GetAsync(
+                variableChange.Name,
+                cancellationToken);
+            expandableValues[variableChange.Name] =
+                await store.IsExpandableAsync(
+                    variableChange.Name,
+                    cancellationToken);
+            desiredValues[variableChange.Name] = variableChange.Value;
+            changes.Add(variableChange);
+        }
+
+        return CreateAuthorizedPreview(
+            originalValues,
+            desiredValues,
+            changes,
+            managedEntries is null
+                ? "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。"
+                : normalizedVariables.Count == 0
+                    ? "只更新管理器 shims 根目录下的 PATH 条目，保留未知条目及相对顺序。"
+                    : $"更新管理器 PATH 条目和 {normalizedVariables.Count} 个受管变量。",
+            expandableValues);
+    }
+
+    private async Task ValidateManagedEntriesAsync(
+        IReadOnlyList<string> managedEntries,
+        CancellationToken cancellationToken)
     {
         var manifests = await environmentManifestStore.ReadAllAsync(
             cancellationToken);
@@ -48,67 +189,6 @@ internal sealed class EnvironmentVariableService(
                     $"PATH 条目未绑定到已纳管环境: {entry}");
             }
         }
-
-        var originalPath = await store.GetAsync(
-            "Path",
-            cancellationToken);
-        var isPathExpandable = await store.IsExpandableAsync(
-            "Path",
-            cancellationToken);
-        var desiredPath = _pathEditor.Apply(
-            originalPath,
-            managedEntries);
-        var change = new EnvironmentVariableChange("Path", desiredPath);
-
-        return CreateAuthorizedPreview(
-            new Dictionary<string, string?>(
-                StringComparer.OrdinalIgnoreCase)
-            {
-                ["Path"] = originalPath
-            },
-            new Dictionary<string, string?>(
-                StringComparer.OrdinalIgnoreCase)
-            {
-                ["Path"] = desiredPath
-            },
-            [change],
-            "只更新管理器 shims 根目录下的 PATH 条目，保留未知条目及相对顺序。",
-            new Dictionary<string, bool>(
-                StringComparer.OrdinalIgnoreCase)
-            {
-                ["Path"] = isPathExpandable
-            });
-    }
-
-    public async Task<EnvironmentVariableUpdatePreview> PreviewManagedVariablesAsync(
-        IReadOnlyList<EnvironmentVariableChange> changes,
-        CancellationToken cancellationToken = default)
-    {
-        var uniqueChanges = NormalizeManagedVariableChanges(changes);
-        var originalValues = new Dictionary<string, string?>(
-            StringComparer.OrdinalIgnoreCase);
-        var desiredValues = new Dictionary<string, string?>(
-            StringComparer.OrdinalIgnoreCase);
-        var expandableValues = new Dictionary<string, bool>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var change in uniqueChanges)
-        {
-            originalValues[change.Name] = await store.GetAsync(
-                change.Name,
-                cancellationToken);
-            expandableValues[change.Name] = await store.IsExpandableAsync(
-                change.Name,
-                cancellationToken);
-            desiredValues[change.Name] = change.Value;
-        }
-
-        return CreateAuthorizedPreview(
-            originalValues,
-            desiredValues,
-            uniqueChanges,
-            "只修改以 AGENT_ENV_MANAGER_ 开头的受管变量。",
-            expandableValues);
     }
 
     public async Task<EnvironmentVariableTransactionResult> ApplyAsync(

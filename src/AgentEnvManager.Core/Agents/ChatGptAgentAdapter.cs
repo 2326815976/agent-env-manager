@@ -2,10 +2,13 @@ namespace AgentEnvManager.Core.Agents;
 
 public sealed class ChatGptAgentAdapter(
     IAgentProcessRunner processRunner,
-    IAgentConfigurationBackupStore backupStore)
+    IAgentConfigurationBackupStore backupStore,
+    IExecutableLocator? executableLocator = null)
     : IAgentAdapter
 {
     private const string LauncherFileName = "agent-env-manager.launch.ps1";
+    private readonly IExecutableLocator _executableLocator =
+        executableLocator ?? new ChatGptExecutableLocator();
 
     public string Name => "ChatGPT";
 
@@ -17,6 +20,11 @@ public sealed class ChatGptAgentAdapter(
         var home = request.ConfigurationDirectory;
         if (string.IsNullOrWhiteSpace(home))
         {
+            home = Environment.GetEnvironmentVariable("CODEX_HOME");
+        }
+
+        if (string.IsNullOrWhiteSpace(home))
+        {
             home = Path.Combine(
                 Environment.GetFolderPath(
                     Environment.SpecialFolder.LocalApplicationData),
@@ -26,6 +34,11 @@ public sealed class ChatGptAgentAdapter(
 
         home = Path.GetFullPath(home);
         var executable = request.Executable;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            executable = _executableLocator.FindExecutable("ChatGPT");
+        }
+
         var installed = Directory.Exists(home)
             && !string.IsNullOrWhiteSpace(executable)
             && File.Exists(executable)

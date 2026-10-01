@@ -182,6 +182,7 @@ public static class CliApplication
                         request.ProviderId!,
                         request.Version!,
                         request.MirrorUrl,
+                        request.InstallRoot,
                         cancellationToken);
                 RuntimeReportRenderer.WritePreview(installPreview, output);
                 return 0;
@@ -192,6 +193,7 @@ public static class CliApplication
                         request.ProviderId!,
                         request.Version!,
                         request.MirrorUrl,
+                        request.InstallRoot,
                         cancellationToken);
                 return await ExecuteConfirmedPlanAsync(
                     request.Confirmed,

@@ -34,6 +34,7 @@ internal sealed record CliRequest(
     string? Version = null,
     string? ArtifactPath = null,
     string? MirrorUrl = null,
+    string? InstallRoot = null,
     string? AgentName = null,
     string? ConfigurationDirectory = null,
     string? ExecutablePath = null,
@@ -201,7 +202,7 @@ internal static class CliArguments
         if (!TryParseOptions(
             args,
             3,
-            ["--mirror"],
+            ["--mirror", "--install-dir"],
             allowConfirm: !isPreview,
             out var options,
             out var confirmed,
@@ -217,6 +218,7 @@ internal static class CliArguments
             ProviderId: args[1],
             Version: args[2],
             MirrorUrl: options.GetValueOrDefault("--mirror"),
+            InstallRoot: options.GetValueOrDefault("--install-dir"),
             Confirmed: confirmed);
     }
 

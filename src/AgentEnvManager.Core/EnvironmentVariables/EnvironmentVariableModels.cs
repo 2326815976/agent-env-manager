@@ -60,6 +60,22 @@ public sealed record EnvironmentVariableTransactionResult(
     OperationRecord Operation,
     EnvironmentVariableRecoveryPoint RecoveryPoint);
 
+public sealed record EnvironmentVariableEditorPathEntry(
+    string Name,
+    string? Version,
+    string ManagedEntryPath,
+    bool IsEnabled);
+
+public sealed record EnvironmentVariableEditorVariable(
+    string Name,
+    string? Value,
+    bool IsExpandable);
+
+public sealed record EnvironmentVariableEditorSnapshot(
+    string? Path,
+    IReadOnlyList<EnvironmentVariableEditorPathEntry> PathEntries,
+    IReadOnlyList<EnvironmentVariableEditorVariable> Variables);
+
 public interface IEnvironmentVariableRecoveryPointStore
 {
     Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>> ReadAllAsync(
@@ -87,6 +103,13 @@ public interface IUserEnvironmentVariableStore
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult(false);
+    }
+
+    Task<IReadOnlyList<string>> ListAsync(
+        string namePrefix,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<string>>([]);
     }
 
     Task SetAsync(

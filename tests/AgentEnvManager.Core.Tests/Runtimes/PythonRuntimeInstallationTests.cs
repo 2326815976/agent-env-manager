@@ -74,6 +74,44 @@ public sealed class PythonRuntimeInstallationTests
     }
 
     [Fact]
+    public async Task PreviewRuntimeInstallAsync_uses_requested_install_root()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var requestedRoot = Path.Combine(
+                root,
+                "custom",
+                "python-3.13.7");
+            var manager = CreateManager(
+                root,
+                new InMemoryManifestStore(),
+                new RecordingOperationJournal(),
+                new RecordingRecoveryPointStore(),
+                new RecordingActivationLink());
+
+            var preview = await manager.PreviewRuntimeInstallAsync(
+                "python",
+                "3.13.7",
+                mirrorUrl: null,
+                installRoot: requestedRoot);
+
+            Assert.Equal(
+                Path.GetFullPath(requestedRoot),
+                preview.InstallRoot);
+            Assert.Equal(
+                Path.Combine(
+                    requestedRoot,
+                    "cpython-3.13.7-windows-x86_64-none"),
+                preview.Location);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task InstallRuntimeAsync_installs_python_and_exposes_managed_entry()
     {
         var root = CreateTempRoot();

@@ -45,6 +45,17 @@ foreach ($required in @(
     }
 }
 
+$docsRoot = Join-Path $portableRoot "docs"
+New-Item -ItemType Directory -Force -Path $docsRoot | Out-Null
+Copy-Item `
+    -LiteralPath (Join-Path $repoRoot "docs\user-guide.txt") `
+    -Destination (Join-Path $docsRoot "使用说明.txt") `
+    -Force
+if (-not (Test-Path -LiteralPath (
+            Join-Path $docsRoot "使用说明.txt"))) {
+    throw "发布缺少用户说明书。"
+}
+
 dotnet publish `
     (Join-Path $repoRoot "src\AgentEnvManager.Cli\AgentEnvManager.Cli.csproj") `
     -c $Configuration `
