@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -14,6 +15,7 @@ public sealed class EnvironmentManager
     private readonly EnvironmentAdopter _adopter;
     private readonly VersionSwitcher _switcher;
     private readonly EnvironmentMigrator _migrator;
+    private readonly EnvironmentDeletionService _deletionService;
     private readonly IOperationJournal _operationJournal;
     private readonly IEnvironmentManifestStore _manifestStore;
     private readonly EnvironmentVariableService _environmentVariables;
@@ -40,7 +42,9 @@ public sealed class EnvironmentManager
         ManagerPaths? managerPaths = null,
         IEnumerable<IAgentAdapter>? agentAdapters = null,
         IMigrationOccupancyProbe? migrationOccupancyProbe = null,
-        IEnvironmentPathMover? environmentPathMover = null)
+        IEnvironmentPathMover? environmentPathMover = null,
+        IEnvironmentQuarantineStore? quarantineStore = null,
+        IRuntimeStateCatalog? runtimeStateCatalog = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         var store = manifestStore ?? new InMemoryEnvironmentManifestStore();
@@ -108,6 +112,20 @@ public sealed class EnvironmentManager
             environmentPathMover
                 ?? new FileSystemEnvironmentPathMover(),
             clock);
+        _deletionService = new EnvironmentDeletionService(
+            store,
+            recoveryStore,
+            journal,
+            link,
+            hasher,
+            environmentPathMover
+                ?? new FileSystemEnvironmentPathMover(),
+            quarantineStore
+                ?? new FileEnvironmentQuarantineStore(
+                    resolvedManagerPaths.QuarantineDirectory),
+            runtimeStateCatalog
+                ?? new WindowsRuntimeStateCatalog(),
+            clock);
     }
 
     public Task<InspectionReport> InspectAsync(
@@ -167,6 +185,80 @@ public sealed class EnvironmentManager
         CancellationToken cancellationToken = default)
     {
         return _migrator.MigrateAsync(preview, cancellationToken);
+    }
+
+    public Task<EnvironmentDeletionPreview> PreviewEnvironmentDeletionAsync(
+        EnvironmentFingerprint fingerprint,
+        IReadOnlyList<string>? associatedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.PreviewAsync(
+            fingerprint,
+            associatedState,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> QuarantineEnvironmentAsync(
+        EnvironmentDeletionPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.QuarantineAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<QuarantinedEnvironment>>
+        ListQuarantinedEnvironmentsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return _deletionService.ListAsync(cancellationToken);
+    }
+
+    public Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.RestoreAsync(
+            quarantineId,
+            cancellationToken);
+    }
+
+    public Task<EnvironmentRestorePreview> PreviewQuarantineRestoreAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.PreviewRestoreAsync(
+            quarantineId,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        EnvironmentRestorePreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.RestoreAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.PreviewPermanentDeleteAsync(
+            quarantineId,
+            cancellationToken);
+    }
+
+    public Task PermanentDeleteAsync(
+        PermanentDeletePreview preview,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        return _deletionService.PermanentDeleteAsync(
+            preview,
+            confirmed,
+            cancellationToken);
     }
 
     public Task<int> RebuildEnvironmentIndexAsync(
@@ -385,6 +477,10 @@ public sealed class EnvironmentManager
             OperationType.Migrate => await _migrator.RollbackAsync(
                 operationId,
                 cancellationToken),
+            OperationType.Delete or OperationType.Purge =>
+                await _deletionService.RollbackDeleteAsync(
+                    operationId,
+                    cancellationToken),
             OperationType.EnvironmentVariables =>
                 await _environmentVariables.RollbackAsync(
                     operationId,

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Operations;
 
@@ -16,6 +17,8 @@ public sealed class OperationCenterViewModel : ObservableObject
     private string _rollbackImpact = string.Empty;
     private string _rollbackRecoveryPoint = string.Empty;
     private string? _pendingRollbackOperationId;
+    private QuarantinedEnvironmentRowViewModel? _selectedQuarantine;
+    private PermanentDeletePreview? _pendingPermanentDelete;
 
     public OperationCenterViewModel(IEnvironmentManagerClient client)
     {
@@ -32,11 +35,26 @@ public sealed class OperationCenterViewModel : ObservableObject
             RollbackSelectedAsync,
             () => !IsBusy && _pendingRollbackOperationId is not null,
             HandleException);
+        RestoreQuarantineCommand = new RelayCommand(
+            RestoreSelectedQuarantineAsync,
+            () => !IsBusy && SelectedQuarantine is not null,
+            HandleException);
+        PreparePermanentDeleteCommand = new RelayCommand(
+            PreparePermanentDeleteAsync,
+            () => !IsBusy && SelectedQuarantine is not null,
+            HandleException);
+        ConfirmPermanentDeleteCommand = new RelayCommand(
+            ConfirmPermanentDeleteAsync,
+            () => !IsBusy && _pendingPermanentDelete is not null,
+            HandleException);
     }
 
     public ObservableCollection<OperationRecordRowViewModel> Operations { get; } = [];
 
     public ObservableCollection<RecoveryPointRowViewModel> RecoveryPoints { get; } = [];
+
+    public ObservableCollection<QuarantinedEnvironmentRowViewModel> QuarantinedEnvironments
+    { get; } = [];
 
     public OperationRecordRowViewModel? SelectedOperation
     {
@@ -58,6 +76,20 @@ public sealed class OperationCenterViewModel : ObservableObject
         {
             if (SetProperty(ref _isBusy, value))
             {
+                RaiseCommandStates();
+            }
+        }
+    }
+
+    public QuarantinedEnvironmentRowViewModel? SelectedQuarantine
+    {
+        get => _selectedQuarantine;
+        set
+        {
+            if (SetProperty(ref _selectedQuarantine, value))
+            {
+                _pendingPermanentDelete = null;
+                PermanentDeleteImpact = string.Empty;
                 RaiseCommandStates();
             }
         }
@@ -87,11 +119,19 @@ public sealed class OperationCenterViewModel : ObservableObject
         private set => SetProperty(ref _rollbackRecoveryPoint, value);
     }
 
+    public string PermanentDeleteImpact { get; private set; } = string.Empty;
+
     public ICommand RefreshCommand { get; }
 
     public ICommand PrepareRollbackCommand { get; }
 
     public ICommand ConfirmRollbackCommand { get; }
+
+    public ICommand RestoreQuarantineCommand { get; }
+
+    public ICommand PreparePermanentDeleteCommand { get; }
+
+    public ICommand ConfirmPermanentDeleteCommand { get; }
 
     public async Task RefreshAsync()
     {
@@ -112,6 +152,11 @@ public sealed class OperationCenterViewModel : ObservableObject
                     .Select(point => RecoveryPointRowViewModel.From(point))
                     .Concat(variablePoints.Select(
                         point => RecoveryPointRowViewModel.From(point))));
+            var quarantined =
+                await _client.ListQuarantinedEnvironmentsAsync();
+            QuarantinedEnvironments.Replace(
+                quarantined.Select(
+                    entry => new QuarantinedEnvironmentRowViewModel(entry)));
             ClearRollbackPlan();
             StatusMessage = $"已加载 {Operations.Count} 条操作记录。";
         }
@@ -140,6 +185,66 @@ public sealed class OperationCenterViewModel : ObservableObject
         RollbackRecoveryPoint = plan.RecoveryPointId;
         StatusMessage = "回滚计划已生成，请确认目标、影响范围和恢复点。";
         RaiseCommandStates();
+    }
+
+    public async Task RestoreSelectedQuarantineAsync()
+    {
+        if (SelectedQuarantine is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var preview = await _client.PreviewQuarantineRestoreAsync(
+                SelectedQuarantine.Id);
+            await _client.RestoreQuarantinedEnvironmentAsync(preview);
+            await RefreshAsync();
+            StatusMessage = $"隔离环境 {preview.QuarantineId} 已恢复。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task PreparePermanentDeleteAsync()
+    {
+        if (SelectedQuarantine is null)
+        {
+            return;
+        }
+
+        _pendingPermanentDelete = await _client.PreviewPermanentDeleteAsync(
+            SelectedQuarantine.Id);
+        PermanentDeleteImpact = _pendingPermanentDelete.Impact;
+        RaiseCommandStates();
+        StatusMessage = "永久清除影响范围已生成，请再次确认。";
+    }
+
+    public async Task ConfirmPermanentDeleteAsync()
+    {
+        if (_pendingPermanentDelete is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            await _client.PermanentDeleteAsync(
+                _pendingPermanentDelete,
+                confirmed: true);
+            _pendingPermanentDelete = null;
+            PermanentDeleteImpact = string.Empty;
+            await RefreshAsync();
+            StatusMessage = "隔离环境已永久清除。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     public async Task RollbackSelectedAsync()
@@ -173,6 +278,9 @@ public sealed class OperationCenterViewModel : ObservableObject
         ((RelayCommand)RefreshCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PrepareRollbackCommand).RaiseCanExecuteChanged();
         ((RelayCommand)ConfirmRollbackCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)RestoreQuarantineCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PreparePermanentDeleteCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ConfirmPermanentDeleteCommand).RaiseCanExecuteChanged();
     }
 
     private void ClearRollbackPlan()
@@ -186,6 +294,23 @@ public sealed class OperationCenterViewModel : ObservableObject
 
 }
 
+public sealed class QuarantinedEnvironmentRowViewModel(
+    QuarantinedEnvironment entry)
+{
+    public string Id { get; } = entry.Id;
+
+    public string Name { get; } = entry.OriginalManifest.Name;
+
+    public string Version { get; } = entry.OriginalManifest.Version ?? string.Empty;
+
+    public string QuarantinePath { get; } = entry.QuarantinePath;
+
+    public string OriginalPath { get; } = entry.OriginalManifest.Location;
+
+    public string AssociatedState { get; } =
+        string.Join("、", entry.AssociatedState);
+}
+
 public sealed class OperationRecordRowViewModel(OperationRecord operation)
 {
     public string Id { get; } = operation.Id;
@@ -195,6 +320,8 @@ public sealed class OperationRecordRowViewModel(OperationRecord operation)
         OperationType.Adopt => "纳管",
         OperationType.Switch => "版本切换",
         OperationType.Migrate => "环境迁移",
+        OperationType.Delete => "隔离删除",
+        OperationType.Purge => "永久清除",
         OperationType.EnvironmentVariables => "环境变量事务",
         OperationType.AgentBinding => "Agent 绑定",
         _ => operation.Type.ToString()

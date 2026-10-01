@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
 
@@ -41,6 +42,57 @@ public interface IEnvironmentManagerClient
     Task<OperationRecord> RollbackOperationAsync(
         string operationId,
         CancellationToken cancellationToken = default);
+
+    Task<EnvironmentDeletionPreview> PreviewEnvironmentDeletionAsync(
+        EnvironmentFingerprint fingerprint,
+        IReadOnlyList<string>? associatedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    Task<OperationRecord> QuarantineEnvironmentAsync(
+        EnvironmentDeletionPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    Task<IReadOnlyList<QuarantinedEnvironment>>
+        ListQuarantinedEnvironmentsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<QuarantinedEnvironment>>([]);
+    }
+
+    Task<EnvironmentRestorePreview> PreviewQuarantineRestoreAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        EnvironmentRestorePreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    Task PermanentDeleteAsync(
+        PermanentDeletePreview preview,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
 
     Task<OperationRollbackPlan> PreviewRollbackAsync(
         string operationId,

@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Scanning;
@@ -31,6 +32,9 @@ public static class EnvironmentManagerFactory
             operationJournal: new FileOperationJournal(
                 paths.OperationDirectory),
             managerPaths: paths,
+            quarantineStore: new FileEnvironmentQuarantineStore(
+                paths.QuarantineDirectory),
+            runtimeStateCatalog: new WindowsRuntimeStateCatalog(),
             migrationOccupancyProbe: new WindowsMigrationOccupancyProbe(),
             environmentPathMover: new FileSystemEnvironmentPathMover(),
             agentAdapters:

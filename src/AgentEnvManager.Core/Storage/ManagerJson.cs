@@ -13,4 +13,9 @@ internal static class ManagerJson
             new JsonStringEnumConverter()
         }
     };
+
+    public static T? Deserialize<T>(string json)
+    {
+        return JsonSerializer.Deserialize<T>(json, Options);
+    }
 }

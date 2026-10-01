@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
 
@@ -180,6 +181,59 @@ public sealed class OperationCenterViewModelTests
 
         public Task<OperationRecord> SwitchVersionAsync(
             VersionSwitchPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<EnvironmentDeletionPreview>
+            PreviewEnvironmentDeletionAsync(
+                EnvironmentFingerprint fingerprint,
+                IReadOnlyList<string>? associatedState = null,
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> QuarantineEnvironmentAsync(
+            EnvironmentDeletionPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<IReadOnlyList<QuarantinedEnvironment>>
+            ListQuarantinedEnvironmentsAsync(
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<QuarantinedEnvironment>>([]);
+        }
+
+        public Task<EnvironmentRestorePreview>
+            PreviewQuarantineRestoreAsync(
+                string quarantineId,
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+            EnvironmentRestorePreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+            string quarantineId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task PermanentDeleteAsync(
+            PermanentDeletePreview preview,
+            bool confirmed,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();

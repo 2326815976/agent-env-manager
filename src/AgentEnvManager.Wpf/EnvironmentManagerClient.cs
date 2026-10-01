@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
 
@@ -78,5 +79,70 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
         CancellationToken cancellationToken = default)
     {
         return manager.PreviewRollbackAsync(operationId, cancellationToken);
+    }
+
+    public Task<EnvironmentDeletionPreview> PreviewEnvironmentDeletionAsync(
+        EnvironmentFingerprint fingerprint,
+        IReadOnlyList<string>? associatedState = null,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewEnvironmentDeletionAsync(
+            fingerprint,
+            associatedState,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> QuarantineEnvironmentAsync(
+        EnvironmentDeletionPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.QuarantineEnvironmentAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<QuarantinedEnvironment>>
+        ListQuarantinedEnvironmentsAsync(
+            CancellationToken cancellationToken = default)
+    {
+        return manager.ListQuarantinedEnvironmentsAsync(cancellationToken);
+    }
+
+    public Task<EnvironmentRestorePreview> PreviewQuarantineRestoreAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewQuarantineRestoreAsync(
+            quarantineId,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> RestoreQuarantinedEnvironmentAsync(
+        EnvironmentRestorePreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.RestoreQuarantinedEnvironmentAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<PermanentDeletePreview> PreviewPermanentDeleteAsync(
+        string quarantineId,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewPermanentDeleteAsync(
+            quarantineId,
+            cancellationToken);
+    }
+
+    public Task PermanentDeleteAsync(
+        PermanentDeletePreview preview,
+        bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PermanentDeleteAsync(
+            preview,
+            confirmed,
+            cancellationToken);
     }
 }

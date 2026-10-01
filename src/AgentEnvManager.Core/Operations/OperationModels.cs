@@ -5,6 +5,8 @@ public enum OperationType
     Adopt,
     Switch,
     Migrate,
+    Delete,
+    Purge,
     EnvironmentVariables,
     AgentBinding
 }

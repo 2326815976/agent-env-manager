@@ -8,6 +8,7 @@ public sealed record ManagerPaths(
     string OperationDirectory,
     string ShimDirectory,
     string AgentBackupDirectory,
+    string QuarantineDirectory,
     string DatabasePath)
 {
     public static ManagerPaths Resolve(string? stateRoot = null)
@@ -26,6 +27,7 @@ public sealed record ManagerPaths(
             Path.Combine(resolvedRoot, "operations"),
             Path.Combine(resolvedRoot, "shims"),
             Path.Combine(resolvedRoot, "agent-backups"),
+            Path.Combine(resolvedRoot, "quarantine"),
             Path.Combine(resolvedRoot, "index", "environments.db"));
     }
 }
