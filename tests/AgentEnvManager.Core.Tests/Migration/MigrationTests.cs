@@ -722,6 +722,73 @@ public sealed class MigrationTests
     }
 
     [Fact]
+    public async Task RollbackOperationAsync_restores_completed_migration()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var journal = new RecordingOperationJournal();
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                operationJournal: journal);
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+            var mover = new FileSystemEnvironmentPathMover();
+            await mover.MoveAsync(sourcePath, destinationPath);
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                destinationPath);
+            await manifestStore.SaveAsync(
+                manifest with { Location = destinationPath });
+            var current = await journal.GetAsync(preview.OperationId!);
+            await journal.SaveAsync(current! with
+            {
+                State = OperationState.Succeeded
+            });
+
+            var rollbackPreview = await manager.PreviewRollbackAsync(
+                preview.OperationId!);
+            var rolledBack = await manager.RollbackOperationAsync(
+                preview.OperationId!);
+
+            Assert.Equal(sourcePath, rollbackPreview.Target);
+            Assert.Equal(OperationState.RolledBack, rolledBack.State);
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.False(Directory.Exists(destinationPath));
+            Assert.Equal(
+                sourcePath,
+                (await manifestStore.FindByFingerprintAsync(
+                    manifest.Fingerprint))!.Location);
+            Assert.Equal(
+                sourcePath,
+                await activationLink.GetTargetAsync(
+                    manifest.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RollbackOperationAsync_deletes_interrupted_cross_volume_copy()
     {
         var root = CreateTempRoot();

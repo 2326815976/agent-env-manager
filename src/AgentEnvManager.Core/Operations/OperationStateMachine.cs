@@ -141,6 +141,7 @@ internal static class OperationStateMachine
                 or OperationState.Failed,
             OperationState.Verifying => next is OperationState.Succeeded
                 or OperationState.Failed,
+            OperationState.Succeeded => next == OperationState.RolledBack,
             OperationState.Failed => next == OperationState.RolledBack,
             _ => false
         };

@@ -580,10 +580,14 @@ public sealed class EnvironmentManager
         var operation = await FindOperationAsync(
             operationId,
             cancellationToken);
-        if (operation.State != OperationState.Failed)
+        var canRollbackCompletedMigration =
+            operation.Type == OperationType.Migrate
+            && operation.State == OperationState.Succeeded;
+        if (operation.State != OperationState.Failed
+            && !canRollbackCompletedMigration)
         {
             throw new InvalidOperationException(
-                "只有失败操作可以生成回滚计划。");
+                "只有失败操作或已完成迁移可以生成回滚计划。");
         }
 
         if (string.IsNullOrWhiteSpace(operation.RecoveryPointId)

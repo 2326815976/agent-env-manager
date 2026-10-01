@@ -5,9 +5,13 @@ namespace AgentEnvManager.Core.Agents;
 
 public sealed class CodexAgentAdapter(
     IAgentProcessRunner processRunner,
-    IAgentConfigurationBackupStore backupStore)
+    IAgentConfigurationBackupStore backupStore,
+    IExecutableLocator? executableLocator = null)
     : IAgentAdapter
 {
+    private readonly IExecutableLocator _executableLocator =
+        executableLocator ?? new WindowsPathExecutableLocator();
+
     public string Name => "Codex";
 
     public Task<AgentDiscoveryResult> DiscoverAsync(
@@ -31,6 +35,11 @@ public sealed class CodexAgentAdapter(
 
         home = Path.GetFullPath(home);
         var executable = request.Executable;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            executable = _executableLocator.FindExecutable("codex");
+        }
+
         var installed = Directory.Exists(home)
             && !string.IsNullOrWhiteSpace(executable)
             && File.Exists(executable);

@@ -294,8 +294,7 @@ internal sealed class EnvironmentMigrator(
             cancellationToken)
             ?? throw new KeyNotFoundException("未找到操作记录。");
         if (operation.Type != OperationType.Migrate
-            || operation.State is OperationState.Succeeded
-                or OperationState.RolledBack)
+            || operation.State == OperationState.RolledBack)
         {
             throw new InvalidOperationException("该操作当前状态不能回滚。");
         }
@@ -408,7 +407,8 @@ internal sealed class EnvironmentMigrator(
             copied,
             cancellationToken);
 
-        if (operation.State != OperationState.Failed)
+        if (operation.State != OperationState.Failed
+            && operation.State != OperationState.Succeeded)
         {
             operation = OperationStateMachine.Fail(
                 operation,

@@ -15,6 +15,11 @@ public interface IAgentProcessRunner
         CancellationToken cancellationToken = default);
 }
 
+public interface IExecutableLocator
+{
+    string? FindExecutable(string command);
+}
+
 public sealed record AgentConfigurationBackupEntry(
     string SourcePath,
     string BackupPath,

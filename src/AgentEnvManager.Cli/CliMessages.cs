@@ -10,9 +10,34 @@ internal static class CliMessages
         output.WriteLine("用法:");
         output.WriteLine("  agent-env-manager inspect");
         output.WriteLine("  agent-env-manager preview <fingerprint>");
-        output.WriteLine("  agent-env-manager adopt <fingerprint>");
+        output.WriteLine(
+            "  agent-env-manager adopt <fingerprint> --confirm");
         output.WriteLine("  agent-env-manager rebuild-index");
-        output.WriteLine("  agent-env-manager rollback <operation-id>");
+        output.WriteLine("  agent-env-manager runtimes");
+        output.WriteLine(
+            "  agent-env-manager runtime-install-preview <provider> <version> [--mirror <url>]");
+        output.WriteLine(
+            "  agent-env-manager runtime-install <provider> <version> [--mirror <url>] --confirm");
+        output.WriteLine(
+            "  agent-env-manager runtime-import <provider> <version> <artifact-path> --confirm");
+        output.WriteLine(
+            "  agent-env-manager migrate-preview <fingerprint> <destination>");
+        output.WriteLine(
+            "  agent-env-manager migrate <fingerprint> <destination> --confirm");
+        output.WriteLine(
+            "  agent-env-manager rollback-preview <operation-id>");
+        output.WriteLine(
+            "  agent-env-manager rollback <operation-id> --confirm");
+        output.WriteLine(
+            "  agent-env-manager agent-discover <agent> [--config-dir <path>] [--executable <path>]");
+        output.WriteLine(
+            "  ChatGPT 发现仍需显式提供 --executable。");
+        output.WriteLine(
+            "  agent-env-manager agent-bind-preview <agent> --config-dir <path> --executable <path> --managed-entry <path> --runtime <name> --runtime-version <version> [--workspace <path>] [--runtime-command <command>]");
+        output.WriteLine(
+            "  agent-env-manager agent-bind <agent> <binding-options> --confirm");
+        output.WriteLine(
+            "  agent-env-manager agent-health <agent> <binding-options>");
         output.WriteLine("  agent-env-manager diagnostics-preview");
         output.WriteLine("  agent-env-manager diagnostics-export <local-zip-path>");
     }

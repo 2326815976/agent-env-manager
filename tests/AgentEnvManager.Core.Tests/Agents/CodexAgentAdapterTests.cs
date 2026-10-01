@@ -79,6 +79,35 @@ public sealed class CodexAgentAdapterTests
     }
 
     [Fact]
+    public async Task DiscoverAsync_locates_codex_on_path_when_not_supplied()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var codexHome = Path.Combine(root, "codex-home");
+            var codexExecutable = Path.Combine(root, "codex.cmd");
+            Directory.CreateDirectory(codexHome);
+            File.WriteAllText(codexExecutable, "@echo off\r\n");
+            var adapter = new CodexAgentAdapter(
+                new RecordingProcessRunner(
+                    new AgentProcessResult(0, "", "")),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                new StubExecutableLocator(codexExecutable));
+
+            var discovery = await adapter.DiscoverAsync(
+                new AgentDiscoveryRequest(codexHome));
+
+            Assert.True(discovery.IsInstalled);
+            Assert.Equal(codexExecutable, discovery.Executable);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task BindAsync_invokes_tool_through_managed_entry()
     {
         var root = CreateTempRoot();
@@ -299,6 +328,15 @@ public sealed class CodexAgentAdapterTests
         {
             LastEnvironment = environment;
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class StubExecutableLocator(string executable)
+        : IExecutableLocator
+    {
+        public string? FindExecutable(string command)
+        {
+            return command == "codex" ? executable : null;
         }
     }
 }
