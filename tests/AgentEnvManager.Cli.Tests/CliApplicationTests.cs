@@ -634,7 +634,14 @@ public sealed class CliApplicationTests
                 IsInstalled: true,
                 Home: @"C:\Users\tester\.codex",
                 Executable: @"C:\Apps\Codex\codex.exe",
-                Message: "已发现 Codex。")
+                Message: "已发现 Codex。",
+                BundledCodexPath: @"C:\Apps\ChatGPT\resources\codex.exe",
+                HomeSource: "CODEX_HOME",
+                CompatibilityJunctionPaths:
+                    [@"C:\Users\tester\AppData\Roaming\Codex"],
+                IsBound: true,
+                BindingFilePath:
+                    @"C:\Users\tester\.codex\agent-env-manager.launch.ps1")
         };
         var output = new StringWriter();
         var error = new StringWriter();
@@ -662,6 +669,14 @@ public sealed class CliApplicationTests
             manager.LastDiscoveryRequest?.Executable);
         Assert.Contains("Agent: codex", output.ToString());
         Assert.Contains("已安装: 是", output.ToString());
+        Assert.Contains(
+            @"内置 Codex: C:\Apps\ChatGPT\resources\codex.exe",
+            output.ToString());
+        Assert.Contains("配置来源: CODEX_HOME", output.ToString());
+        Assert.Contains(
+            @"兼容 Junction: C:\Users\tester\AppData\Roaming\Codex",
+            output.ToString());
+        Assert.Contains("绑定状态: 已绑定", output.ToString());
         Assert.Contains("已发现 Codex。", output.ToString());
     }
 

@@ -3,12 +3,24 @@ namespace AgentEnvManager.Core.Agents;
 public sealed class ChatGptAgentAdapter(
     IAgentProcessRunner processRunner,
     IAgentConfigurationBackupStore backupStore,
-    IExecutableLocator? executableLocator = null)
+    IExecutableLocator? executableLocator = null,
+    Func<Environment.SpecialFolder, string>? getFolderPath = null,
+    Func<string, bool>? isReparsePoint = null,
+    Func<string, string?>? resolveLinkTarget = null,
+    Func<string, string?>? readEnvironmentVariable = null)
     : IAgentAdapter
 {
     private const string LauncherFileName = "agent-env-manager.launch.ps1";
     private readonly IExecutableLocator _executableLocator =
         executableLocator ?? new ChatGptExecutableLocator();
+    private readonly Func<Environment.SpecialFolder, string> _getFolderPath =
+        getFolderPath ?? Environment.GetFolderPath;
+    private readonly Func<string, bool> _isReparsePoint =
+        isReparsePoint ?? IsReparsePoint;
+    private readonly Func<string, string?> _resolveLinkTarget =
+        resolveLinkTarget ?? ResolveLinkTarget;
+    private readonly Func<string, string?> _readEnvironmentVariable =
+        readEnvironmentVariable ?? Environment.GetEnvironmentVariable;
 
     public string Name => "ChatGPT";
 
@@ -17,10 +29,15 @@ public sealed class ChatGptAgentAdapter(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var homeSource = "显式指定";
         var home = request.ConfigurationDirectory;
         if (string.IsNullOrWhiteSpace(home))
         {
-            home = Environment.GetEnvironmentVariable("CODEX_HOME");
+            home = _readEnvironmentVariable("CODEX_HOME");
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                homeSource = "CODEX_HOME";
+            }
         }
 
         if (string.IsNullOrWhiteSpace(home))
@@ -30,6 +47,7 @@ public sealed class ChatGptAgentAdapter(
                     Environment.SpecialFolder.LocalApplicationData),
                 "OpenAI",
                 "ChatGPTLauncher");
+            homeSource = "默认位置";
         }
 
         home = Path.GetFullPath(home);
@@ -39,17 +57,129 @@ public sealed class ChatGptAgentAdapter(
             executable = _executableLocator.FindExecutable("ChatGPT");
         }
 
+        var bundledCodexPath = string.IsNullOrWhiteSpace(executable)
+            ? null
+            : TryGetBundledCodexExecutable(executable);
         var installed = Directory.Exists(home)
             && !string.IsNullOrWhiteSpace(executable)
             && File.Exists(executable)
-            && File.Exists(GetBundledCodexExecutable(executable));
+            && bundledCodexPath is not null
+            && File.Exists(bundledCodexPath);
+        var compatibilityJunctions = GetCompatibilityJunctions(home);
+        var bindingFilePath = Path.Combine(home, LauncherFileName);
+        var isBound = File.Exists(bindingFilePath);
         return Task.FromResult(new AgentDiscoveryResult(
             installed,
             home,
             executable,
             installed
-                ? "已发现 ChatGPT。"
-                : "未完整发现 ChatGPT 配置环境或可执行文件。"));
+                ? isBound
+                    ? "已发现 ChatGPT 启动链，且已存在绑定文件。"
+                    : "已发现 ChatGPT 启动链，尚未绑定。"
+                : "未完整发现 ChatGPT 配置环境或可执行文件。",
+            BundledCodexPath: bundledCodexPath,
+            HomeSource: homeSource,
+            CompatibilityJunctionPaths: compatibilityJunctions,
+            IsBound: isBound,
+            BindingFilePath: bindingFilePath));
+    }
+
+    // 兼容 Junction 由研究契约确定：%APPDATA%\Codex 与
+    // %LOCALAPPDATA%\Codex 指向真实配置环境。
+    private IReadOnlyList<string> GetCompatibilityJunctions(string home)
+    {
+        string[] candidates =
+        [
+            Path.Combine(
+                _getFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Codex"),
+            Path.Combine(
+                _getFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData),
+                "Codex")
+        ];
+        return candidates
+            .Where(candidate =>
+                !string.IsNullOrWhiteSpace(candidate)
+                && _isReparsePoint(candidate)
+                && IsLinkedTo(candidate, home))
+            .ToArray();
+    }
+
+    private bool IsLinkedTo(string linkPath, string targetPath)
+    {
+        var target = _resolveLinkTarget(linkPath);
+        return target is not null
+            && PathsEqual(target, targetPath);
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left).TrimEnd('\\', '/'),
+                Path.GetFullPath(right).TrimEnd('\\', '/'),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    private static string? ResolveLinkTarget(string linkPath)
+    {
+        try
+        {
+            return Directory.ResolveLinkTarget(
+                linkPath,
+                returnFinalTarget: true)?.FullName;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetBundledCodexExecutable(string executable)
+    {
+        try
+        {
+            return GetBundledCodexExecutable(executable);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException
+            or ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path)
+                & FileAttributes.ReparsePoint) != 0;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     public Task<AgentBindingPlan> CreatePlanAsync(

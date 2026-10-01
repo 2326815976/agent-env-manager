@@ -274,7 +274,13 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
                 Environment.NewLine,
                 $"已安装: {(discovery.IsInstalled ? "是" : "否")}",
                 $"Agent 配置环境: {discovery.Home ?? "未发现"}",
+                $"配置来源: {discovery.HomeSource ?? "未知"}",
                 $"可执行文件: {discovery.Executable ?? "未发现"}",
+                $"内置 Codex: {discovery.BundledCodexPath ?? "未发现"}",
+                $"app-server 入口: {discovery.BundledCodexPath ?? "未发现"}",
+                $"兼容 Junction: {FormatJunctions(discovery)}",
+                $"绑定状态: {(discovery.IsBound ? "已绑定" : "未绑定")}",
+                $"绑定文件: {discovery.BindingFilePath ?? "未记录"}",
                 discovery.Message);
             StatusMessage = "Agent 发现完成。";
         });
@@ -417,6 +423,13 @@ public sealed class AgentBindingViewModel : AsyncOperationViewModel
             && !string.IsNullOrWhiteSpace(ManagedEntryPath)
             && !string.IsNullOrWhiteSpace(RuntimeName)
             && !string.IsNullOrWhiteSpace(RuntimeVersion);
+    }
+
+    private static string FormatJunctions(AgentDiscoveryResult discovery)
+    {
+        return discovery.CompatibilityJunctionPaths is { Count: > 0 }
+            ? string.Join("、", discovery.CompatibilityJunctionPaths)
+            : "未发现";
     }
 
     private void HandleException(Exception exception)

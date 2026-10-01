@@ -6,6 +6,175 @@ namespace AgentEnvManager.Core.Tests.Agents;
 public sealed class ChatGptAgentAdapterTests
 {
     [Fact]
+    public async Task DiscoverAsync_reports_not_installed_for_root_executable()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var adapter = new ChatGptAgentAdapter(
+                new RecordingProcessRunner(
+                    new Dictionary<string, AgentProcessResult>()),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                getFolderPath: _ => Path.Combine(root, "folders"),
+                isReparsePoint: _ => false);
+
+            var discovery = await adapter.DiscoverAsync(
+                new AgentDiscoveryRequest(
+                    Path.Combine(root, "chatgpt-home"),
+                    @"C:\"));
+
+            Assert.False(discovery.IsInstalled);
+            Assert.Null(discovery.BundledCodexPath);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_reports_launch_chain_junction_and_binding_state()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var configurationDirectory = Path.Combine(root, "chatgpt-home");
+            var applicationDirectory = Path.Combine(root, "app");
+            var executable = Path.Combine(
+                applicationDirectory,
+                "ChatGPT.exe");
+            var bundledCodex = Path.Combine(
+                applicationDirectory,
+                "resources",
+                "codex.exe");
+            var roamingAppData = Path.Combine(root, "roaming");
+            var localAppData = Path.Combine(root, "local");
+            var compatibilityJunction = Path.Combine(
+                roamingAppData,
+                "Codex");
+            Directory.CreateDirectory(configurationDirectory);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(bundledCodex)!);
+            File.WriteAllText(executable, string.Empty);
+            File.WriteAllText(bundledCodex, string.Empty);
+            var bindingFilePath = Path.Combine(
+                configurationDirectory,
+                "agent-env-manager.launch.ps1");
+            File.WriteAllText(bindingFilePath, string.Empty);
+            var adapter = new ChatGptAgentAdapter(
+                new RecordingProcessRunner(
+                    new Dictionary<string, AgentProcessResult>()),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                getFolderPath: folder => folder switch
+                {
+                    Environment.SpecialFolder.ApplicationData =>
+                        roamingAppData,
+                    Environment.SpecialFolder.LocalApplicationData =>
+                        localAppData,
+                    _ => root
+                },
+                isReparsePoint: path => string.Equals(
+                    path,
+                    compatibilityJunction,
+                    StringComparison.OrdinalIgnoreCase),
+                resolveLinkTarget: _ => configurationDirectory);
+
+            var discovery = await adapter.DiscoverAsync(
+                new AgentDiscoveryRequest(
+                    configurationDirectory,
+                    executable));
+
+            Assert.True(discovery.IsInstalled);
+            Assert.Equal(
+                [compatibilityJunction],
+                discovery.CompatibilityJunctionPaths);
+            Assert.Equal(bundledCodex, discovery.BundledCodexPath);
+            Assert.True(discovery.IsBound);
+            Assert.Equal(bindingFilePath, discovery.BindingFilePath);
+
+            // Junction 指向别处时不应被认定为兼容链接。
+            var mismatched = new ChatGptAgentAdapter(
+                new RecordingProcessRunner(
+                    new Dictionary<string, AgentProcessResult>()),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                getFolderPath: folder => folder switch
+                {
+                    Environment.SpecialFolder.ApplicationData =>
+                        roamingAppData,
+                    Environment.SpecialFolder.LocalApplicationData =>
+                        localAppData,
+                    _ => root
+                },
+                isReparsePoint: path => string.Equals(
+                    path,
+                    compatibilityJunction,
+                    StringComparison.OrdinalIgnoreCase),
+                resolveLinkTarget: _ => Path.Combine(root, "other-home"));
+            var mismatchedDiscovery = await mismatched.DiscoverAsync(
+                new AgentDiscoveryRequest(
+                    configurationDirectory,
+                    executable));
+
+            Assert.Empty(mismatchedDiscovery.CompatibilityJunctionPaths!);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_reports_codex_home_source()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var configurationDirectory = Path.Combine(root, "codex-home");
+            var applicationDirectory = Path.Combine(root, "app");
+            var executable = Path.Combine(
+                applicationDirectory,
+                "ChatGPT.exe");
+            var bundledCodex = Path.Combine(
+                applicationDirectory,
+                "resources",
+                "codex.exe");
+            Directory.CreateDirectory(configurationDirectory);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(bundledCodex)!);
+            File.WriteAllText(executable, string.Empty);
+            File.WriteAllText(bundledCodex, string.Empty);
+            var adapter = new ChatGptAgentAdapter(
+                new RecordingProcessRunner(
+                    new Dictionary<string, AgentProcessResult>()),
+                new FileAgentConfigurationBackupStore(
+                    Path.Combine(root, "backups")),
+                getFolderPath: _ => Path.Combine(root, "folders"),
+                isReparsePoint: _ => false,
+                readEnvironmentVariable: name =>
+                    string.Equals(
+                        name,
+                        "CODEX_HOME",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? configurationDirectory
+                        : null);
+
+            var discovery = await adapter.DiscoverAsync(
+                new AgentDiscoveryRequest(Executable: executable));
+
+            Assert.Equal(configurationDirectory, discovery.Home);
+            Assert.Equal("CODEX_HOME", discovery.HomeSource);
+            Assert.False(discovery.IsBound);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task BindAsync_launches_chatgpt_and_runs_tool_health_check()
     {
         var root = CreateTempRoot();

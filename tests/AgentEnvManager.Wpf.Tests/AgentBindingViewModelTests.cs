@@ -8,6 +8,37 @@ namespace AgentEnvManager.Wpf.Tests;
 public sealed class AgentBindingViewModelTests
 {
     [Fact]
+    public async Task DiscoverAgentAsync_reports_launch_chain_and_binding_state()
+    {
+        var client = new StubAgentClient
+        {
+            DiscoveryResult = new AgentDiscoveryResult(
+                IsInstalled: true,
+                Home: @"C:\Users\tester\.codex",
+                Executable: @"C:\Apps\ChatGPT\ChatGPT.exe",
+                Message: "已发现 ChatGPT 启动链，且已存在绑定文件。",
+                BundledCodexPath: @"C:\Apps\ChatGPT\resources\codex.exe",
+                HomeSource: "CODEX_HOME",
+                CompatibilityJunctionPaths:
+                    [@"C:\Users\tester\AppData\Roaming\Codex"],
+                IsBound: true,
+                BindingFilePath:
+                    @"C:\Users\tester\.codex\agent-env-manager.launch.ps1")
+        };
+        var viewModel = new AgentBindingViewModel(client, client, client);
+
+        await viewModel.DiscoverAgentAsync();
+
+        Assert.Contains("内置 Codex", viewModel.DiscoveryResult);
+        Assert.Contains(
+            @"C:\Apps\ChatGPT\resources\codex.exe",
+            viewModel.DiscoveryResult);
+        Assert.Contains("配置来源: CODEX_HOME", viewModel.DiscoveryResult);
+        Assert.Contains("兼容 Junction", viewModel.DiscoveryResult);
+        Assert.Contains("已绑定", viewModel.DiscoveryResult);
+    }
+
+    [Fact]
     public async Task DiscoverAndPreview_displays_agent_and_recovery_point_information()
     {
         var client = new StubAgentClient();
@@ -164,6 +195,8 @@ public sealed class AgentBindingViewModelTests
 
         public string? DiscoveryExecutable { get; init; }
 
+        public AgentDiscoveryResult? DiscoveryResult { get; init; }
+
         public IReadOnlyList<string> DescribeAgentAdapters()
         {
             return ["Codex", "ChatGPT"];
@@ -174,11 +207,12 @@ public sealed class AgentBindingViewModelTests
             AgentDiscoveryRequest request,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new AgentDiscoveryResult(
-                IsInstalled: true,
-                DiscoveryHome ?? request.ConfigurationDirectory,
-                DiscoveryExecutable ?? request.Executable,
-                "已发现 Codex。"));
+            return Task.FromResult(DiscoveryResult
+                ?? new AgentDiscoveryResult(
+                    IsInstalled: true,
+                    DiscoveryHome ?? request.ConfigurationDirectory,
+                    DiscoveryExecutable ?? request.Executable,
+                    "已发现 Codex。"));
         }
 
         public Task<AgentBindingPlan> CreateAgentBindingPlanAsync(

@@ -15,8 +15,27 @@ internal static class AgentReportRenderer
         output.WriteLine(
             $"Agent 配置环境: {discovery.Home ?? "未发现"}");
         output.WriteLine(
+            $"配置来源: {discovery.HomeSource ?? "未知"}");
+        output.WriteLine(
             $"可执行文件: {discovery.Executable ?? "未发现"}");
+        output.WriteLine(
+            $"内置 Codex: {discovery.BundledCodexPath ?? "未发现"}");
+        output.WriteLine(
+            $"app-server 入口: {discovery.BundledCodexPath ?? "未发现"}");
+        output.WriteLine(
+            $"兼容 Junction: {FormatJunctions(discovery)}");
+        output.WriteLine(
+            $"绑定状态: {(discovery.IsBound ? "已绑定" : "未绑定")}");
+        output.WriteLine(
+            $"绑定文件: {discovery.BindingFilePath ?? "未记录"}");
         output.WriteLine($"结果: {discovery.Message}");
+    }
+
+    private static string FormatJunctions(AgentDiscoveryResult discovery)
+    {
+        return discovery.CompatibilityJunctionPaths is { Count: > 0 }
+            ? string.Join("、", discovery.CompatibilityJunctionPaths)
+            : "未发现";
     }
 
     public static void WritePlan(

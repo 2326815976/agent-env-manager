@@ -61,7 +61,12 @@ public sealed record AgentDiscoveryResult(
     bool IsInstalled,
     string? Home,
     string? Executable,
-    string Message);
+    string Message,
+    string? BundledCodexPath = null,
+    string? HomeSource = null,
+    IReadOnlyList<string>? CompatibilityJunctionPaths = null,
+    bool IsBound = false,
+    string? BindingFilePath = null);
 
 public sealed record AgentBindingPlan(
     string AgentName,
