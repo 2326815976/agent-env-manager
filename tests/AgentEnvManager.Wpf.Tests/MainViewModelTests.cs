@@ -3,6 +3,8 @@ using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
+using AgentEnvManager.Core.Diagnostics;
+using AgentEnvManager.Core.Runtimes;
 using AgentEnvManager.Wpf;
 
 namespace AgentEnvManager.Wpf.Tests;
@@ -134,71 +136,88 @@ public sealed class MainViewModelTests
         Assert.Equal("node-24", client.LastPreview.Fingerprint.Value);
     }
 
-    private sealed class StubManagerClient(InspectionReport report)
-        : IEnvironmentManagerClient
+    [Fact]
+    public async Task RuntimeAndDiagnosticsCenters_are_wired_to_client()
     {
-        public Task<InspectionReport> InspectAsync(
+        var client = new RuntimeAndDiagnosticsClient();
+        var viewModel = new MainViewModel(client);
+
+        await viewModel.RuntimeCenter.LoadProvidersAsync();
+        await viewModel.DiagnosticsPackage.PreviewAsync();
+
+        Assert.Equal(
+            "Python",
+            Assert.Single(viewModel.RuntimeCenter.Providers).Name);
+        Assert.Equal(
+            "summary.txt",
+            Assert.Single(viewModel.DiagnosticsPackage.Entries).Name);
+    }
+
+    private sealed class StubManagerClient(InspectionReport report)
+        : StubEnvironmentManagerClient
+    {
+        public override Task<InspectionReport> InspectAsync(
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(report);
         }
 
-        public Task<AdoptionPreview> PreviewAdoptionAsync(
+        public override Task<AdoptionPreview> PreviewAdoptionAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<ManagedEnvironment> AdoptAsync(
+        public override Task<ManagedEnvironment> AdoptAsync(
             AdoptionPreview preview,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+        public override Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRecord> SwitchVersionAsync(
+        public override Task<OperationRecord> SwitchVersionAsync(
             VersionSwitchPreview preview,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        public override Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        public override Task<IReadOnlyList<AdoptionRecoveryPoint>>
             ListEnvironmentRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        public override Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
             ListEnvironmentVariableRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRecord> RollbackOperationAsync(
+        public override Task<OperationRecord> RollbackOperationAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRollbackPlan> PreviewRollbackAsync(
+        public override Task<OperationRollbackPlan> PreviewRollbackAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
@@ -209,13 +228,13 @@ public sealed class MainViewModelTests
     private sealed class AdoptingManagerClient(
         ObservedEnvironment observed,
         InspectionReport managedReport)
-        : IEnvironmentManagerClient
+        : StubEnvironmentManagerClient
     {
         private int _inspectCount;
 
         public AdoptionPreview? LastPreview { get; private set; }
 
-        public Task<InspectionReport> InspectAsync(
+        public override Task<InspectionReport> InspectAsync(
             CancellationToken cancellationToken = default)
         {
             _inspectCount++;
@@ -228,7 +247,7 @@ public sealed class MainViewModelTests
                 : managedReport);
         }
 
-        public Task<AdoptionPreview> PreviewAdoptionAsync(
+        public override Task<AdoptionPreview> PreviewAdoptionAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
@@ -246,7 +265,7 @@ public sealed class MainViewModelTests
             return Task.FromResult(LastPreview);
         }
 
-        public Task<ManagedEnvironment> AdoptAsync(
+        public override Task<ManagedEnvironment> AdoptAsync(
             AdoptionPreview preview,
             CancellationToken cancellationToken = default)
         {
@@ -270,52 +289,79 @@ public sealed class MainViewModelTests
                     @"C:\shims\node")));
         }
 
-        public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+        public override Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRecord> SwitchVersionAsync(
+        public override Task<OperationRecord> SwitchVersionAsync(
             VersionSwitchPreview preview,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        public override Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        public override Task<IReadOnlyList<AdoptionRecoveryPoint>>
             ListEnvironmentRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        public override Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
             ListEnvironmentVariableRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRecord> RollbackOperationAsync(
+        public override Task<OperationRecord> RollbackOperationAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRollbackPlan> PreviewRollbackAsync(
+        public override Task<OperationRollbackPlan> PreviewRollbackAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class RuntimeAndDiagnosticsClient
+        : StubEnvironmentManagerClient
+    {
+        public override IReadOnlyList<RuntimeProviderDescriptor>
+            DescribeRuntimeProviders()
+        {
+            return [new PythonRuntimeProvider().Descriptor];
+        }
+
+        public override Task<DiagnosticPackagePreview>
+            PreviewDiagnosticPackageAsync(
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new DiagnosticPackagePreview(
+                [
+                    new DiagnosticPackageEntry(
+                        "summary.txt",
+                        "诊断摘要。",
+                        "脱敏诊断摘要。")
+                ],
+                "只导出脱敏内容。",
+                "preview-hash",
+                TelemetryEnabled: false,
+                AllowsAutomaticUpload: false));
         }
     }
 }

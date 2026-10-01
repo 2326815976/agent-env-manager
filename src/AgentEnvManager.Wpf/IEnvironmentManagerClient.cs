@@ -2,12 +2,48 @@ using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Deletion;
+using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
+using AgentEnvManager.Core.Runtimes;
 
 namespace AgentEnvManager.Wpf;
 
+public interface IRuntimeCenterClient
+{
+    IReadOnlyList<RuntimeProviderDescriptor> DescribeRuntimeProviders();
+
+    Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
+        string providerId,
+        string version,
+        string? mirrorUrl,
+        CancellationToken cancellationToken = default);
+
+    Task<InstalledRuntime> InstallRuntimeAsync(
+        RuntimeInstallPreview preview,
+        CancellationToken cancellationToken = default);
+
+    Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
+        string providerId,
+        string version,
+        string sourcePath,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IDiagnosticsPackageClient
+{
+    Task<DiagnosticPackagePreview> PreviewDiagnosticPackageAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<DiagnosticPackageResult> ExportDiagnosticPackageAsync(
+        DiagnosticPackagePreview preview,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IEnvironmentManagerClient
+    : IRuntimeCenterClient,
+      IDiagnosticsPackageClient
 {
     Task<InspectionReport> InspectAsync(
         CancellationToken cancellationToken = default);

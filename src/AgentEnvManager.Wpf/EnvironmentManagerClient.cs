@@ -2,8 +2,10 @@ using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Deletion;
+using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
+using AgentEnvManager.Core.Runtimes;
 
 namespace AgentEnvManager.Wpf;
 
@@ -14,6 +16,62 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
         CancellationToken cancellationToken = default)
     {
         return manager.InspectAsync(cancellationToken);
+    }
+
+    public IReadOnlyList<RuntimeProviderDescriptor>
+        DescribeRuntimeProviders()
+    {
+        return manager.DescribeRuntimeProviders();
+    }
+
+    public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
+        string providerId,
+        string version,
+        string? mirrorUrl,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewRuntimeInstallAsync(
+            providerId,
+            version,
+            mirrorUrl,
+            cancellationToken);
+    }
+
+    public Task<InstalledRuntime> InstallRuntimeAsync(
+        RuntimeInstallPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.InstallRuntimeAsync(preview, cancellationToken);
+    }
+
+    public Task<RuntimeArtifactCacheEntry> ImportRuntimeArtifactAsync(
+        string providerId,
+        string version,
+        string sourcePath,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.ImportRuntimeArtifactAsync(
+            providerId,
+            version,
+            sourcePath,
+            cancellationToken);
+    }
+
+    public Task<DiagnosticPackagePreview> PreviewDiagnosticPackageAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewDiagnosticPackageAsync(cancellationToken);
+    }
+
+    public Task<DiagnosticPackageResult> ExportDiagnosticPackageAsync(
+        DiagnosticPackagePreview preview,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.ExportDiagnosticPackageAsync(
+            preview,
+            destinationPath,
+            cancellationToken);
     }
 
     public Task<AdoptionPreview> PreviewAdoptionAsync(

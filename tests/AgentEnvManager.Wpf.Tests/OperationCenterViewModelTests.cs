@@ -68,13 +68,13 @@ public sealed class OperationCenterViewModelTests
         Assert.False(Assert.Single(viewModel.Operations).CanRollback);
     }
 
-    private sealed class StubClient : IEnvironmentManagerClient
+    private sealed class StubClient : StubEnvironmentManagerClient
     {
         public string? RolledBackOperationId { get; private set; }
 
         public IReadOnlyList<OperationRecord>? Operations { get; set; }
 
-        public Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
+        public override Task<IReadOnlyList<OperationRecord>> ListOperationsAsync(
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(Operations ??
@@ -92,7 +92,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public Task<IReadOnlyList<AdoptionRecoveryPoint>>
+        public override Task<IReadOnlyList<AdoptionRecoveryPoint>>
             ListEnvironmentRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
@@ -109,7 +109,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
+        public override Task<IReadOnlyList<EnvironmentVariableRecoveryPoint>>
             ListEnvironmentVariableRecoveryPointsAsync(
                 CancellationToken cancellationToken = default)
         {
@@ -126,7 +126,7 @@ public sealed class OperationCenterViewModelTests
             ]);
         }
 
-        public Task<OperationRecord> RollbackOperationAsync(
+        public override Task<OperationRecord> RollbackOperationAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
@@ -140,7 +140,7 @@ public sealed class OperationCenterViewModelTests
                 "纳管 Node.js"));
         }
 
-        public Task<OperationRollbackPlan> PreviewRollbackAsync(
+        public override Task<OperationRollbackPlan> PreviewRollbackAsync(
             string operationId,
             CancellationToken cancellationToken = default)
         {
@@ -152,34 +152,34 @@ public sealed class OperationCenterViewModelTests
                 "环境资产恢复为操作前状态。"));
         }
 
-        public Task<InspectionReport> InspectAsync(
+        public override Task<InspectionReport> InspectAsync(
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<AdoptionPreview> PreviewAdoptionAsync(
+        public override Task<AdoptionPreview> PreviewAdoptionAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<ManagedEnvironment> AdoptAsync(
+        public override Task<ManagedEnvironment> AdoptAsync(
             AdoptionPreview preview,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
+        public override Task<VersionSwitchPreview> PreviewVersionSwitchAsync(
             EnvironmentFingerprint fingerprint,
             CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }
 
-        public Task<OperationRecord> SwitchVersionAsync(
+        public override Task<OperationRecord> SwitchVersionAsync(
             VersionSwitchPreview preview,
             CancellationToken cancellationToken = default)
         {

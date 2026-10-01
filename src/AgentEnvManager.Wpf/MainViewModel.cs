@@ -23,6 +23,12 @@ public sealed class MainViewModel : ObservableObject
     {
         _client = client;
         OperationCenter = new OperationCenterViewModel(client);
+        RuntimeCenter = new RuntimeCenterViewModel(
+            client,
+            OperationCenter.RefreshAsync);
+        DiagnosticsPackage = new DiagnosticsPackageViewModel(
+            client,
+            OperationCenter.RefreshAsync);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -49,10 +55,15 @@ public sealed class MainViewModel : ObservableObject
 
     public OperationCenterViewModel OperationCenter { get; }
 
+    public RuntimeCenterViewModel RuntimeCenter { get; }
+
+    public DiagnosticsPackageViewModel DiagnosticsPackage { get; }
+
     public ObservableCollection<PathConflictViewModel> PathConflicts { get; } = [];
 
     public ObservableCollection<CommandPathConflictViewModel>
-        CommandPathConflicts { get; } = [];
+        CommandPathConflicts
+    { get; } = [];
 
     public DateTimeOffset? ReportGeneratedAt
     {
