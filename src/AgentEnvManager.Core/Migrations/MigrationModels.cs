@@ -7,6 +7,17 @@ public sealed record MigrationBlocker(
     string Message,
     string? Path = null);
 
+public enum MigrationStrategy
+{
+    AtomicRename,
+    CopyAndVerify
+}
+
+public sealed record MigrationPathStatistics(
+    long FileCount,
+    long TotalBytes,
+    long AvailableBytes);
+
 public sealed record MigrationPreview(
     EnvironmentFingerprint TargetFingerprint,
     EnvironmentManifest Target,
@@ -16,6 +27,8 @@ public sealed record MigrationPreview(
     string ManagedEntryPath,
     string PreviousActivationTarget,
     bool WasActive,
+    MigrationStrategy Strategy,
+    MigrationPathStatistics Statistics,
     string Impact,
     string ExpectedResult,
     string? OperationId = null,
@@ -31,13 +44,27 @@ public interface IMigrationOccupancyProbe
 
 public interface IEnvironmentPathMover
 {
-    void ValidateSameVolume(
+    MigrationStrategy GetStrategy(
         string sourcePath,
         string destinationPath);
+
+    Task<MigrationPathStatistics> InspectAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
 
     Task MoveAsync(
         string sourcePath,
         string destinationPath,
+        CancellationToken cancellationToken = default);
+
+    Task CopyAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(
+        string path,
         CancellationToken cancellationToken = default);
 
     Task MoveBackAsync(

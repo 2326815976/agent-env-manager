@@ -41,10 +41,23 @@ internal sealed class EnvironmentMigrator(
         var wasActive = PathsEqual(
             previousActivationTarget,
             sourcePath);
+        var strategy = pathMover.GetStrategy(
+            sourcePath,
+            destination);
+        var statistics = await pathMover.InspectAsync(
+            sourcePath,
+            destination,
+            cancellationToken);
+        ValidateMigrationResources(
+            strategy,
+            statistics);
 
+        var operationText = strategy == MigrationStrategy.AtomicRename
+            ? "原子重命名"
+            : "复制、哈希校验并保留原目录";
         var impact = wasActive
-            ? $"将 {sourcePath} 原子重命名到 {destination}，稳定激活路径保持 {target.StableActivationPath}。"
-            : $"将非激活版本 {sourcePath} 原子重命名到 {destination}；健康检查期间临时激活，完成后恢复原激活目标 {previousActivationTarget}。";
+            ? $"将 {sourcePath} {operationText}到 {destination}，稳定激活路径保持 {target.StableActivationPath}。"
+            : $"将非激活版本 {sourcePath} {operationText}到 {destination}；健康检查期间临时激活，完成后恢复原激活目标 {previousActivationTarget}。";
         var expectedResult = wasActive
             ? $"{sourcePath} 迁移到 {destination}，稳定激活路径可用且健康检查通过。"
             : $"{sourcePath} 迁移到 {destination}，健康检查通过并恢复原激活目标 {previousActivationTarget}。";
@@ -58,7 +71,8 @@ internal sealed class EnvironmentMigrator(
             expectedResult: expectedResult,
             targetIdentity: target.Fingerprint.Value,
             sourceTarget: sourcePath,
-            stableActivationPath: target.StableActivationPath);
+            stableActivationPath: target.StableActivationPath,
+            migrationStrategy: strategy.ToString());
         await operationJournal.SaveAsync(operation, cancellationToken);
         operation = await SaveTransitionAsync(
             OperationStateMachine.MarkValidated(
@@ -86,6 +100,8 @@ internal sealed class EnvironmentMigrator(
             GetManagedEntryPath(target),
             previousActivationTarget,
             wasActive,
+            strategy,
+            statistics,
             impact,
             expectedResult,
             operation.Id,
@@ -127,7 +143,15 @@ internal sealed class EnvironmentMigrator(
             throw new InvalidOperationException("迁移恢复点缺少原环境记录。");
         }
 
+        var statistics = await pathMover.InspectAsync(
+            preview.SourcePath,
+            preview.DestinationPath,
+            cancellationToken);
+        ValidateMigrationResources(
+            preview.Strategy,
+            statistics);
         var moved = false;
+        var copied = false;
         try
         {
             operation = await SaveTransitionAsync(
@@ -135,11 +159,44 @@ internal sealed class EnvironmentMigrator(
                     operation,
                     timeProvider),
                 cancellationToken);
-            await pathMover.MoveAsync(
-                preview.SourcePath,
-                preview.DestinationPath,
-                cancellationToken);
-            moved = true;
+            if (preview.Strategy == MigrationStrategy.AtomicRename)
+            {
+                await pathMover.MoveAsync(
+                    preview.SourcePath,
+                    preview.DestinationPath,
+                    cancellationToken);
+                moved = true;
+            }
+            else
+            {
+                copied = true;
+                await pathMover.CopyAsync(
+                    preview.SourcePath,
+                    preview.DestinationPath,
+                    cancellationToken);
+                var copiedManifest = MoveManifest(
+                    preview.Target,
+                    preview.SourcePath,
+                    preview.DestinationPath);
+                var sourceHash = await assetHasher.ComputeHashAsync(
+                    ToAsset(preview.Target, preview.SourcePath),
+                    cancellationToken);
+                var destinationHash = await assetHasher.ComputeHashAsync(
+                    ToAsset(copiedManifest, copiedManifest.Location),
+                    cancellationToken);
+                if (!string.Equals(
+                        sourceHash,
+                        preview.Target.AssetHash,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        sourceHash,
+                        destinationHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "跨卷复制后的哈希校验失败。");
+                }
+            }
 
             var movedManifest = MoveManifest(
                 preview.Target,
@@ -194,6 +251,7 @@ internal sealed class EnvironmentMigrator(
                     preview,
                     recoveryPoint,
                     moved,
+                    copied,
                     CancellationToken.None);
                 failureReason = $"{failureReason}；已恢复原激活路径。";
             }
@@ -269,22 +327,48 @@ internal sealed class EnvironmentMigrator(
                 "迁移操作与原环境身份不一致，拒绝回滚。");
         }
 
-        var destinationExists = Directory.Exists(destinationPath);
+        var destinationExists = Directory.Exists(destinationPath)
+            || File.Exists(destinationPath);
         var sourceExists = Directory.Exists(sourcePath);
-        if (destinationExists && sourceExists)
+        if (!Enum.TryParse<MigrationStrategy>(
+                operation.MigrationStrategy,
+                ignoreCase: true,
+                out var strategy))
         {
             throw new InvalidOperationException(
-                "迁移源和迁移目标同时存在，无法确定回滚来源。");
+                "迁移操作缺少有效的迁移策略。");
         }
 
-        if (!destinationExists && !sourceExists)
+        var moved = false;
+        var copied = false;
+        if (strategy == MigrationStrategy.CopyAndVerify)
         {
-            throw new DirectoryNotFoundException(
-                "迁移源和目标均不存在，无法回滚。");
+            if (!sourceExists)
+            {
+                throw new DirectoryNotFoundException(
+                    "跨卷迁移必须保留原目录，但原目录不存在。");
+            }
+
+            copied = destinationExists;
+        }
+        else
+        {
+            if (destinationExists && sourceExists)
+            {
+                throw new InvalidOperationException(
+                    "迁移源和迁移目标同时存在，无法确定回滚来源。");
+            }
+
+            if (!destinationExists && !sourceExists)
+            {
+                throw new DirectoryNotFoundException(
+                    "迁移源和目标均不存在，无法回滚。");
+            }
+
+            moved = destinationExists;
         }
 
-        var moved = destinationExists;
-        if (moved)
+        if (destinationExists)
         {
             var destinationHash = await assetHasher.ComputeHashAsync(
                 ToAsset(original, destinationPath),
@@ -292,7 +376,8 @@ internal sealed class EnvironmentMigrator(
             if (!string.Equals(
                     destinationHash,
                     original.AssetHash,
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)
+                && operation.State != OperationState.Executing)
             {
                 throw new InvalidOperationException(
                     "迁移目标内容校验失败，拒绝回滚。");
@@ -310,6 +395,8 @@ internal sealed class EnvironmentMigrator(
             PathsEqual(
                 operation.PreviousTarget ?? sourcePath,
                 sourcePath),
+            strategy,
+            new MigrationPathStatistics(0, 0, 0),
             operation.Impact ?? "恢复迁移前状态。",
             operation.ExpectedResult ?? "恢复迁移前状态。",
             operation.Id,
@@ -318,6 +405,7 @@ internal sealed class EnvironmentMigrator(
             preview,
             recoveryPoint,
             moved,
+            copied,
             cancellationToken);
 
         if (operation.State != OperationState.Failed)
@@ -370,7 +458,11 @@ internal sealed class EnvironmentMigrator(
             || string.IsNullOrWhiteSpace(operation.StableActivationPath)
             || !PathsEqual(
                 preview.StableActivationPath,
-                operation.StableActivationPath))
+                operation.StableActivationPath)
+            || !string.Equals(
+                preview.Strategy.ToString(),
+                operation.MigrationStrategy,
+                StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 "迁移计划已过期，请重新预览。");
@@ -388,6 +480,20 @@ internal sealed class EnvironmentMigrator(
                 "迁移计划已过期，请重新预览。");
         }
 
+        var currentStatistics = await pathMover.InspectAsync(
+            preview.SourcePath,
+            preview.DestinationPath,
+            cancellationToken);
+        if (currentStatistics.FileCount != preview.Statistics.FileCount
+            || currentStatistics.TotalBytes != preview.Statistics.TotalBytes)
+        {
+            throw new InvalidOperationException(
+                "迁移计划已过期，请重新预览。");
+        }
+
+        ValidateMigrationResources(
+            preview.Strategy,
+            currentStatistics);
         var current = await manifestStore.FindByFingerprintAsync(
             preview.TargetFingerprint,
             cancellationToken);
@@ -446,6 +552,14 @@ internal sealed class EnvironmentMigrator(
 
         ValidateNoReparsePointAncestors(destinationPath);
         ValidateWritableDestination(destinationPath);
+        var strategy = pathMover.GetStrategy(
+            sourcePath,
+            destinationPath);
+        if (strategy == MigrationStrategy.AtomicRename)
+        {
+            ValidateSourceParentMutation(sourcePath);
+        }
+
         var managedEntryPath = GetManagedEntryPath(manifest);
         var managedEntryTarget = await activationLink.GetTargetAsync(
             managedEntryPath,
@@ -459,7 +573,6 @@ internal sealed class EnvironmentMigrator(
                 "受管入口未指向稳定激活路径，无法安全迁移。");
         }
 
-        pathMover.ValidateSameVolume(sourcePath, destinationPath);
         var blockers = await occupancyProbe.FindBlockersAsync(
             sourcePath,
             destinationPath,
@@ -471,12 +584,30 @@ internal sealed class EnvironmentMigrator(
         }
     }
 
+    private static void ValidateMigrationResources(
+        MigrationStrategy strategy,
+        MigrationPathStatistics statistics)
+    {
+        if (strategy == MigrationStrategy.CopyAndVerify
+            && statistics.TotalBytes > statistics.AvailableBytes)
+        {
+            throw new InvalidOperationException(
+                $"目标卷空间不足，需要 {statistics.TotalBytes} 字节，可用 {statistics.AvailableBytes} 字节。");
+        }
+    }
+
     private static void ValidateNoReparsePointAncestors(string destinationPath)
     {
         var current = Path.GetDirectoryName(
             Path.GetFullPath(destinationPath));
         while (!string.IsNullOrWhiteSpace(current))
         {
+            if (File.Exists(current) && !Directory.Exists(current))
+            {
+                throw new InvalidOperationException(
+                    $"目标路径的祖先位置被文件占用: {current}");
+            }
+
             if (Directory.Exists(current)
                 && File.GetAttributes(current)
                     .HasFlag(FileAttributes.ReparsePoint))
@@ -496,6 +627,30 @@ internal sealed class EnvironmentMigrator(
             }
 
             current = parent;
+        }
+    }
+
+    private static void ValidateSourceParentMutation(string sourcePath)
+    {
+        var parent = Path.GetDirectoryName(
+            Path.GetFullPath(sourcePath))
+            ?? throw new InvalidOperationException(
+                "源路径缺少父目录。");
+        var probePath = Path.Combine(
+            parent,
+            $".agent-env-manager-rename-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            Directory.CreateDirectory(probePath);
+            Directory.Delete(probePath);
+        }
+        catch (Exception exception)
+            when (exception is IOException
+                or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException(
+                $"源父目录不可写或无法删除探测目录: {parent}",
+                exception);
         }
     }
 
@@ -553,6 +708,7 @@ internal sealed class EnvironmentMigrator(
         MigrationPreview preview,
         AdoptionRecoveryPoint recoveryPoint,
         bool moved,
+        bool copied,
         CancellationToken cancellationToken)
     {
         if (moved)
@@ -560,6 +716,13 @@ internal sealed class EnvironmentMigrator(
             await pathMover.MoveBackAsync(
                 preview.DestinationPath,
                 preview.SourcePath,
+                cancellationToken);
+        }
+
+        if (copied)
+        {
+            await pathMover.DeleteAsync(
+                preview.DestinationPath,
                 cancellationToken);
         }
 

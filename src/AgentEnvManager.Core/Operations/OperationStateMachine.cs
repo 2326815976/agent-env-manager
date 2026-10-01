@@ -12,7 +12,8 @@ internal static class OperationStateMachine
         string? expectedResult = null,
         string? targetIdentity = null,
         string? sourceTarget = null,
-        string? stableActivationPath = null)
+        string? stableActivationPath = null,
+        string? migrationStrategy = null)
     {
         var now = timeProvider.GetUtcNow();
         return new OperationRecord(
@@ -28,7 +29,8 @@ internal static class OperationStateMachine
             ExpectedResult: expectedResult,
             TargetIdentity: targetIdentity,
             SourceTarget: sourceTarget,
-            StableActivationPath: stableActivationPath);
+            StableActivationPath: stableActivationPath,
+            MigrationStrategy: migrationStrategy);
     }
 
     public static OperationRecord MarkValidated(

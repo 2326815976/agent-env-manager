@@ -7,8 +7,6 @@ namespace AgentEnvManager.Core.Storage;
 
 public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
 {
-    private const long EmbeddedContentLimit = 1024 * 1024;
-
     public async Task<string> ComputeHashAsync(
         EnvironmentAsset asset,
         CancellationToken cancellationToken = default)
@@ -77,13 +75,10 @@ public sealed class FileSystemEnvironmentAssetHasher : IEnvironmentAssetHasher
                 {
                     hash.AppendData(Encoding.UTF8.GetBytes(info.Length.ToString()));
                     hash.AppendData([0]);
-                    if (info.Length <= EmbeddedContentLimit)
-                    {
-                        await AppendFileContentHashAsync(
-                            hash,
-                            path,
-                            cancellationToken);
-                    }
+                    await AppendFileContentHashAsync(
+                        hash,
+                        path,
+                        cancellationToken);
                 }
 
                 hash.AppendData(Encoding.UTF8.GetBytes(

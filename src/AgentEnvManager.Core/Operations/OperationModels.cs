@@ -36,7 +36,8 @@ public sealed record OperationRecord(
     string? ExpectedResult = null,
     string? TargetIdentity = null,
     string? SourceTarget = null,
-    string? StableActivationPath = null);
+    string? StableActivationPath = null,
+    string? MigrationStrategy = null);
 
 public sealed record OperationRollbackPlan(
     string OperationId,

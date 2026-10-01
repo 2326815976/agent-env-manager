@@ -6,7 +6,7 @@ namespace AgentEnvManager.Core.Migrations;
 
 public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
 {
-    public void ValidateSameVolume(
+    public MigrationStrategy GetStrategy(
         string sourcePath,
         string destinationPath)
     {
@@ -19,9 +19,87 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
                 destinationVolume,
                 StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException(
-                "同卷迁移要求源路径和目标路径位于同一卷。");
+            return MigrationStrategy.CopyAndVerify;
         }
+
+        return MigrationStrategy.AtomicRename;
+    }
+
+    public Task<MigrationPathStatistics> InspectAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        if (!Directory.Exists(source))
+        {
+            throw new DirectoryNotFoundException(
+                $"源环境目录不存在: {source}");
+        }
+
+        long fileCount = 0;
+        long totalBytes = 0;
+        foreach (var directory in Directory.EnumerateDirectories(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.GetAttributes(directory)
+                .HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException(
+                    $"待迁移环境包含链接目录: {directory}");
+            }
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var attributes = File.GetAttributes(filePath);
+            if (attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException(
+                    $"待迁移环境包含链接文件: {filePath}");
+            }
+
+            fileCount++;
+            totalBytes = checked(
+                totalBytes + new FileInfo(filePath).Length);
+            try
+            {
+                using var stream = File.OpenRead(filePath);
+            }
+            catch (Exception exception)
+                when (exception is IOException
+                    or UnauthorizedAccessException)
+            {
+                throw new InvalidOperationException(
+                    $"迁移前无法读取源文件: {filePath}",
+                    exception);
+            }
+        }
+
+        var destinationAncestor = FindExistingAncestor(
+            Path.GetFullPath(destinationPath));
+        if (!GetDiskFreeSpaceEx(
+                destinationAncestor,
+                out var availableBytes,
+                out _,
+                out _))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "无法读取目标卷可用空间。");
+        }
+
+        return Task.FromResult(new MigrationPathStatistics(
+            fileCount,
+            totalBytes,
+            checked((long)availableBytes)));
     }
 
     public Task MoveAsync(
@@ -30,7 +108,13 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateSameVolume(sourcePath, destinationPath);
+        if (GetStrategy(sourcePath, destinationPath)
+            != MigrationStrategy.AtomicRename)
+        {
+            throw new InvalidOperationException(
+                "跨卷路径不能使用原子重命名迁移。");
+        }
+
         var source = Path.GetFullPath(sourcePath);
         var destination = Path.GetFullPath(destinationPath);
         if (!Directory.Exists(source))
@@ -52,6 +136,50 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
         return Task.CompletedTask;
     }
 
+    public Task CopyAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        var source = Path.GetFullPath(sourcePath);
+        var destination = Path.GetFullPath(destinationPath);
+        if (!Directory.Exists(source))
+        {
+            throw new DirectoryNotFoundException(
+                $"源环境目录不存在: {source}");
+        }
+
+        if (Directory.Exists(destination)
+            || File.Exists(destination))
+        {
+            throw new IOException($"目标路径已存在: {destination}");
+        }
+
+        CopyDirectory(
+            source,
+            destination,
+            cancellationToken);
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+        {
+            Directory.Delete(fullPath, recursive: true);
+        }
+        else if (File.Exists(fullPath))
+        {
+            File.Delete(fullPath);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task MoveBackAsync(
         string currentPath,
         string originalPath,
@@ -60,7 +188,7 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
         cancellationToken.ThrowIfCancellationRequested();
         var current = Path.GetFullPath(currentPath);
         var original = Path.GetFullPath(originalPath);
-        if (!Directory.Exists(current))
+        if (!Directory.Exists(current) && !File.Exists(current))
         {
             throw new DirectoryNotFoundException(
                 $"待恢复的迁移目录不存在: {current}");
@@ -114,6 +242,64 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
         return current;
     }
 
+    private static void CopyDirectory(
+        string source,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var directory in Directory.EnumerateDirectories(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var attributes = File.GetAttributes(directory);
+            if (attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException(
+                    $"待迁移环境包含链接目录: {directory}");
+            }
+
+            var relative = Path.GetRelativePath(source, directory);
+            Directory.CreateDirectory(
+                Path.Combine(destination, relative));
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(source, filePath);
+            var targetPath = Path.Combine(destination, relative);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(targetPath)!);
+            File.Copy(filePath, targetPath, overwrite: false);
+            File.SetLastWriteTimeUtc(
+                targetPath,
+                File.GetLastWriteTimeUtc(filePath));
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(
+                     source,
+                     "*",
+                     SearchOption.AllDirectories)
+                 .OrderByDescending(path => path.Length))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(source, directory);
+            Directory.SetLastWriteTimeUtc(
+                Path.Combine(destination, relative),
+                Directory.GetLastWriteTimeUtc(directory));
+        }
+
+        Directory.SetLastWriteTimeUtc(
+            destination,
+            Directory.GetLastWriteTimeUtc(source));
+    }
+
     [DllImport(
         "kernel32.dll",
         CharSet = CharSet.Unicode,
@@ -123,4 +309,12 @@ public sealed class FileSystemEnvironmentPathMover : IEnvironmentPathMover
         string fileName,
         StringBuilder volumePathName,
         int bufferLength);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetDiskFreeSpaceEx(
+        string directoryName,
+        out ulong freeBytesAvailable,
+        out ulong totalNumberOfBytes,
+        out ulong totalNumberOfFreeBytes);
 }

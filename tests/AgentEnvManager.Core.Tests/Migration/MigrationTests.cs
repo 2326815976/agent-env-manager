@@ -369,12 +369,292 @@ public sealed class MigrationTests
     {
         var mover = new FileSystemEnvironmentPathMover();
 
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => mover.ValidateSameVolume(
+        var strategy = mover.GetStrategy(
                 @"C:\source\runtime",
-                @"D:\destination\runtime"));
+                @"D:\destination\runtime");
 
-        Assert.Contains("同一卷", exception.Message);
+        Assert.Equal(MigrationStrategy.CopyAndVerify, strategy);
+    }
+
+    [Fact]
+    public async Task PreviewMigrationAsync_rejects_insufficient_destination_space()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                new string('x', 128));
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                environmentPathMover: new CrossVolumePathMover(
+                    availableBytes: 1));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.PreviewMigrationAsync(
+                    manifest.Fingerprint,
+                    destinationPath));
+
+            Assert.Contains("空间不足", exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PreviewMigrationAsync_rejects_file_in_destination_ancestor()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var blockingFile = Path.Combine(root, "blocked");
+            var destinationPath = Path.Combine(
+                blockingFile,
+                "moved",
+                "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(blockingFile, "blocked");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.PreviewMigrationAsync(
+                    manifest.Fingerprint,
+                    destinationPath));
+
+            Assert.Contains("祖先位置被文件占用", exception.Message);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MigrateEnvironmentAsync_copies_across_volumes_and_keeps_source()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                environmentPathMover: new CrossVolumePathMover());
+
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+            var operation = await manager.MigrateEnvironmentAsync(preview);
+
+            Assert.Equal(MigrationStrategy.CopyAndVerify, preview.Strategy);
+            Assert.Equal(OperationState.Succeeded, operation.State);
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.True(File.Exists(
+                Path.Combine(destinationPath, "node.exe")));
+            Assert.Equal(
+                destinationPath,
+                await activationLink.GetTargetAsync(
+                    manifest.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MigrateEnvironmentAsync_verifies_real_directory_hash()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            var nestedPath = Path.Combine(sourcePath, "nested");
+            Directory.CreateDirectory(nestedPath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            File.WriteAllText(
+                Path.Combine(nestedPath, "config.json"),
+                "{\"version\":1}");
+            var hasher = new FileSystemEnvironmentAssetHasher();
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath) with
+            {
+                AssetHash = await hasher.ComputeHashAsync(
+                    new EnvironmentAsset(
+                        EnvironmentAssetKind.ToolRuntime,
+                        "Node.js",
+                        "24.1.0",
+                        sourcePath,
+                        IsSystemComponent: false,
+                        DiscoverySourceInfo.PathCommand))
+            };
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                assetHasher: hasher,
+                environmentPathMover: new CrossVolumePathMover());
+
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+            var operation = await manager.MigrateEnvironmentAsync(preview);
+
+            Assert.Equal(OperationState.Succeeded, operation.State);
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.True(File.Exists(
+                Path.Combine(destinationPath, "nested", "config.json")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MigrateEnvironmentAsync_cleans_partial_copy_after_interruption()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                environmentPathMover: new CrossVolumePathMover(
+                    failCopy: true));
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.MigrateEnvironmentAsync(preview));
+
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.False(Directory.Exists(destinationPath));
+            Assert.Equal(
+                sourcePath,
+                await activationLink.GetTargetAsync(
+                    manifest.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MigrateEnvironmentAsync_rolls_back_failed_copy_verification()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath) with
+            {
+                AssetHash = "source-hash"
+            };
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                assetHasher: new PathSensitiveAssetHasher(),
+                environmentPathMover: new CrossVolumePathMover());
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.MigrateEnvironmentAsync(preview));
+
+            Assert.Contains("哈希校验失败", exception.Message);
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.False(Directory.Exists(destinationPath));
+            Assert.Equal(
+                sourcePath,
+                await activationLink.GetTargetAsync(
+                    manifest.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -434,6 +714,122 @@ public sealed class MigrationTests
                 sourcePath,
                 await activationLink.GetTargetAsync(
                     manifest.StableActivationPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RollbackOperationAsync_deletes_interrupted_cross_volume_copy()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var journal = new RecordingOperationJournal();
+            var pathMover = new CrossVolumePathMover();
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                operationJournal: journal,
+                environmentPathMover: pathMover);
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+            await pathMover.CopyAsync(sourcePath, destinationPath);
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                destinationPath);
+            await manifestStore.SaveAsync(
+                manifest with { Location = destinationPath });
+            var current = await journal.GetAsync(preview.OperationId!);
+            await journal.SaveAsync(current! with
+            {
+                State = OperationState.Verifying
+            });
+
+            var rolledBack = await manager.RollbackOperationAsync(
+                preview.OperationId!);
+
+            Assert.Equal(OperationState.RolledBack, rolledBack.State);
+            Assert.True(Directory.Exists(sourcePath));
+            Assert.False(Directory.Exists(destinationPath));
+            Assert.Equal(
+                sourcePath,
+                await activationLink.GetTargetAsync(
+                    manifest.StableActivationPath));
+            Assert.Equal(
+                sourcePath,
+                (await manifestStore.FindByFingerprintAsync(
+                    manifest.Fingerprint))!.Location);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RollbackOperationAsync_deletes_file_left_at_cross_volume_target()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var sourcePath = Path.Combine(root, "runtime");
+            var destinationPath = Path.Combine(root, "moved", "runtime");
+            Directory.CreateDirectory(sourcePath);
+            File.WriteAllText(
+                Path.Combine(sourcePath, "node.exe"),
+                "node");
+            var manifestStore = new InMemoryManifestStore();
+            var manifest = CreateManifest(sourcePath);
+            await manifestStore.SaveAsync(manifest);
+            var activationLink = new RecordingActivationLink();
+            await ConfigureActivationAsync(
+                activationLink,
+                manifest,
+                sourcePath);
+            var journal = new RecordingOperationJournal();
+            var manager = CreateManager(
+                manifestStore,
+                new StubMigrationOccupancyProbe([]),
+                activationLink,
+                operationJournal: journal,
+                environmentPathMover: new CrossVolumePathMover());
+            var preview = await manager.PreviewMigrationAsync(
+                manifest.Fingerprint,
+                destinationPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            await File.WriteAllTextAsync(destinationPath, "partial");
+            var current = await journal.GetAsync(preview.OperationId!);
+            await journal.SaveAsync(current! with
+            {
+                State = OperationState.Executing
+            });
+
+            var rolledBack = await manager.RollbackOperationAsync(
+                preview.OperationId!);
+
+            Assert.Equal(OperationState.RolledBack, rolledBack.State);
+            Assert.False(File.Exists(destinationPath));
+            Assert.True(Directory.Exists(sourcePath));
         }
         finally
         {
@@ -521,13 +917,15 @@ public sealed class MigrationTests
         IMigrationOccupancyProbe occupancyProbe,
         RecordingActivationLink? activationLink = null,
         RecordingRuntimeHealthCheck? healthCheck = null,
-        RecordingOperationJournal? operationJournal = null)
+        RecordingOperationJournal? operationJournal = null,
+        IEnvironmentAssetHasher? assetHasher = null,
+        IEnvironmentPathMover? environmentPathMover = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(
                 new EnvironmentProbeResult([], [])),
             manifestStore: manifestStore,
-            assetHasher: new FixedAssetHasher("asset-hash"),
+            assetHasher: assetHasher ?? new FixedAssetHasher("asset-hash"),
             recoveryPointStore: new RecordingRecoveryPointStore(),
             operationJournal: operationJournal
                 ?? new RecordingOperationJournal(),
@@ -535,7 +933,8 @@ public sealed class MigrationTests
             healthCheck: healthCheck
                 ?? new RecordingRuntimeHealthCheck(isHealthy: true),
             migrationOccupancyProbe: occupancyProbe,
-            environmentPathMover: new FileSystemEnvironmentPathMover());
+            environmentPathMover: environmentPathMover
+                ?? new FileSystemEnvironmentPathMover());
     }
 
     private static EnvironmentManifest CreateManifest(string sourcePath)
@@ -602,6 +1001,96 @@ public sealed class MigrationTests
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult(blockers);
+        }
+    }
+
+    private sealed class PathSensitiveAssetHasher : IEnvironmentAssetHasher
+    {
+        public Task<string> ComputeHashAsync(
+            EnvironmentAsset asset,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                asset.Location.Contains(
+                    "moved",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "destination-hash"
+                    : "source-hash");
+        }
+    }
+
+    private sealed class CrossVolumePathMover(
+        long? availableBytes = null,
+        bool failCopy = false)
+        : IEnvironmentPathMover
+    {
+        private readonly FileSystemEnvironmentPathMover _inner = new();
+
+        public MigrationStrategy GetStrategy(
+            string sourcePath,
+            string destinationPath)
+        {
+            return MigrationStrategy.CopyAndVerify;
+        }
+
+        public async Task<MigrationPathStatistics> InspectAsync(
+            string sourcePath,
+            string destinationPath,
+            CancellationToken cancellationToken = default)
+        {
+            var statistics = await _inner.InspectAsync(
+                sourcePath,
+                destinationPath,
+                cancellationToken);
+            return availableBytes is null
+                ? statistics
+                : statistics with { AvailableBytes = availableBytes.Value };
+        }
+
+        public Task MoveAsync(
+            string sourcePath,
+            string destinationPath,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task CopyAsync(
+            string sourcePath,
+            string destinationPath,
+            CancellationToken cancellationToken = default)
+        {
+            if (failCopy)
+            {
+                Directory.CreateDirectory(destinationPath);
+                File.WriteAllText(
+                    Path.Combine(destinationPath, "partial.tmp"),
+                    "partial");
+                throw new IOException("模拟复制中断。");
+            }
+
+            return _inner.CopyAsync(
+                sourcePath,
+                destinationPath,
+                cancellationToken);
+        }
+
+        public Task DeleteAsync(
+            string path,
+            CancellationToken cancellationToken = default)
+        {
+            return _inner.DeleteAsync(path, cancellationToken);
+        }
+
+        public Task MoveBackAsync(
+            string currentPath,
+            string originalPath,
+            CancellationToken cancellationToken = default)
+        {
+            return _inner.MoveBackAsync(
+                currentPath,
+                originalPath,
+                cancellationToken);
         }
     }
 }

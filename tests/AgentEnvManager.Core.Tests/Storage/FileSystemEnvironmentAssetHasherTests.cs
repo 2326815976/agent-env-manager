@@ -47,6 +47,62 @@ public sealed class FileSystemEnvironmentAssetHasherTests
         }
     }
 
+    [Fact]
+    public async Task DirectoryHash_changes_when_large_file_content_changes()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "AgentEnvManager.Tests",
+            Guid.NewGuid().ToString("N"));
+        var first = Path.Combine(root, "first");
+        var second = Path.Combine(root, "second");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        var largeContent = new byte[2 * 1024 * 1024];
+        await File.WriteAllBytesAsync(
+            Path.Combine(first, "runtime.bin"),
+            largeContent);
+        largeContent[^1] = 1;
+        await File.WriteAllBytesAsync(
+            Path.Combine(second, "runtime.bin"),
+            largeContent);
+        var timestamp = DateTime.UtcNow;
+        File.SetLastWriteTimeUtc(
+            Path.Combine(first, "runtime.bin"),
+            timestamp);
+        File.SetLastWriteTimeUtc(
+            Path.Combine(second, "runtime.bin"),
+            timestamp);
+        Directory.SetLastWriteTimeUtc(first, timestamp);
+        Directory.SetLastWriteTimeUtc(second, timestamp);
+
+        try
+        {
+            var hasher = new FileSystemEnvironmentAssetHasher();
+            var firstHash = await hasher.ComputeHashAsync(
+                CreateAsset(first));
+            var secondHash = await hasher.ComputeHashAsync(
+                CreateAsset(second));
+
+            Assert.NotEqual(firstHash, secondHash);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static EnvironmentAsset CreateAsset(string path)
+    {
+        return new EnvironmentAsset(
+            EnvironmentAssetKind.ToolRuntime,
+            "Node.js",
+            "24.1.0",
+            path,
+            IsSystemComponent: false,
+            DiscoverySourceInfo.PathCommand);
+    }
+
     private sealed class StubEnvironmentProbe(string path) : IEnvironmentProbe
     {
         public Task<EnvironmentProbeResult> ProbeAsync(
