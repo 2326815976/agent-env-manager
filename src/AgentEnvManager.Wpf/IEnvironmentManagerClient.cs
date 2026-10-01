@@ -1,9 +1,11 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Runtimes;
 
@@ -41,9 +43,48 @@ public interface IDiagnosticsPackageClient
         CancellationToken cancellationToken = default);
 }
 
+public interface IMigrationClient
+{
+    Task<MigrationPreview> PreviewMigrationAsync(
+        EnvironmentFingerprint fingerprint,
+        string destinationPath,
+        CancellationToken cancellationToken = default);
+
+    Task<OperationRecord> MigrateEnvironmentAsync(
+        MigrationPreview preview,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IAgentBindingClient
+{
+    IReadOnlyList<string> DescribeAgentAdapters();
+
+    Task<AgentDiscoveryResult> DiscoverAgentAsync(
+        string agentName,
+        AgentDiscoveryRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
+        string agentName,
+        AgentBindingRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AgentBinding> BindAgentAsync(
+        string agentName,
+        AgentBindingPlan plan,
+        CancellationToken cancellationToken = default);
+
+    Task<AgentHealthCheckResult> CheckAgentHealthAsync(
+        string agentName,
+        AgentBinding binding,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IEnvironmentManagerClient
     : IRuntimeCenterClient,
-      IDiagnosticsPackageClient
+      IDiagnosticsPackageClient,
+      IMigrationClient,
+      IAgentBindingClient
 {
     Task<InspectionReport> InspectAsync(
         CancellationToken cancellationToken = default);

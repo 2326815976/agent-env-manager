@@ -23,6 +23,9 @@ public sealed class EnvironmentRowViewModel(ObservedEnvironment environment)
             ? "已纳管"
             : "仅观测";
 
+    public bool IsManaged { get; } =
+        environment.ManagementState == ManagementState.Managed;
+
     public string HealthStateLabel { get; } =
         EnvironmentLabelFormatter.FormatHealth(environment.HealthState);
 }

@@ -29,6 +29,18 @@ public sealed class MainViewModel : ObservableObject
         DiagnosticsPackage = new DiagnosticsPackageViewModel(
             client,
             OperationCenter.RefreshAsync);
+        MigrationCenter = new MigrationCenterViewModel(
+            client,
+            async () =>
+            {
+                await ScanAsync();
+                await OperationCenter.RefreshAsync();
+            });
+        AgentBinding = new AgentBindingViewModel(
+            client,
+            client,
+            new WindowsFileSystemPicker(),
+            OperationCenter.RefreshAsync);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -59,6 +71,10 @@ public sealed class MainViewModel : ObservableObject
 
     public DiagnosticsPackageViewModel DiagnosticsPackage { get; }
 
+    public MigrationCenterViewModel MigrationCenter { get; }
+
+    public AgentBindingViewModel AgentBinding { get; }
+
     public ObservableCollection<PathConflictViewModel> PathConflicts { get; } = [];
 
     public ObservableCollection<CommandPathConflictViewModel>
@@ -78,6 +94,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedEnvironment, value))
             {
+                MigrationCenter.SelectedEnvironment = value;
                 ClearPendingPlans();
                 RaiseCommandStates();
             }

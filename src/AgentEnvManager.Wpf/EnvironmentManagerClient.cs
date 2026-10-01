@@ -1,9 +1,11 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Diagnostics;
 using AgentEnvManager.Core.Inspection;
+using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Runtimes;
 
@@ -71,6 +73,75 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
         return manager.ExportDiagnosticPackageAsync(
             preview,
             destinationPath,
+            cancellationToken);
+    }
+
+    public Task<MigrationPreview> PreviewMigrationAsync(
+        EnvironmentFingerprint fingerprint,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewMigrationAsync(
+            fingerprint,
+            destinationPath,
+            cancellationToken);
+    }
+
+    public Task<OperationRecord> MigrateEnvironmentAsync(
+        MigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.MigrateEnvironmentAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public IReadOnlyList<string> DescribeAgentAdapters()
+    {
+        return manager.DescribeAgentAdapters();
+    }
+
+    public Task<AgentDiscoveryResult> DiscoverAgentAsync(
+        string agentName,
+        AgentDiscoveryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.DiscoverAgentAsync(
+            agentName,
+            request,
+            cancellationToken);
+    }
+
+    public Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
+        string agentName,
+        AgentBindingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.CreateAgentBindingPlanAsync(
+            agentName,
+            request,
+            cancellationToken);
+    }
+
+    public Task<AgentBinding> BindAgentAsync(
+        string agentName,
+        AgentBindingPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.BindAgentAsync(
+            agentName,
+            plan,
+            cancellationToken);
+    }
+
+    public Task<AgentHealthCheckResult> CheckAgentHealthAsync(
+        string agentName,
+        AgentBinding binding,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.CheckAgentHealthAsync(
+            agentName,
+            binding,
             cancellationToken);
     }
 

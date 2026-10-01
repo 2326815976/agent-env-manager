@@ -464,6 +464,192 @@
                     </Grid>
                 </Grid>
             </TabItem>
+            <TabItem Header="迁移"
+                     DataContext="{Binding MigrationCenter}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,10">
+                        <Button Content="预览迁移"
+                                Command="{Binding PreviewMigrationCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="确认迁移"
+                                Command="{Binding MigrateCommand}"
+                                Padding="14,6"
+                                Margin="0,0,16,0" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#52616B"
+                                   Text="{Binding StatusMessage}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="360" />
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock FontWeight="SemiBold"
+                                       Text="已纳管环境" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding SelectedEnvironment.Name, StringFormat=名称：{0}}" />
+                            <TextBlock Text="{Binding SelectedEnvironment.Version, StringFormat=版本：{0}}" />
+                            <TextBlock Text="{Binding SelectedEnvironment.Location, StringFormat=当前位置：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SelectedEnvironment.Fingerprint.Value, StringFormat=指纹：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,16,0,0"
+                                       Text="迁移目标路径" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding DestinationPath, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{Binding MigrationImpact, StringFormat=影响范围：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding PendingTarget, StringFormat=目标路径：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PendingRecoveryPoint, StringFormat=恢复点：{0}}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding ExpectedResult, StringFormat=预期结果：{0}}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Agent 绑定"
+                     DataContext="{Binding AgentBinding}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,10">
+                        <ComboBox Width="120"
+                                  ItemsSource="{Binding AvailableAgents}"
+                                  SelectedItem="{Binding SelectedAgent, Mode=TwoWay}" />
+                        <Button Content="发现 Agent"
+                                Command="{Binding DiscoverCommand}"
+                                Padding="14,6"
+                                Margin="8,0,8,0" />
+                        <Button Content="预览绑定"
+                                Command="{Binding PreviewBindingCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="执行绑定"
+                                Command="{Binding BindCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="健康检查"
+                                Command="{Binding HealthCheckCommand}"
+                                Padding="14,6"
+                                Margin="0,0,16,0" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#52616B"
+                                   Text="{Binding StatusMessage}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="380" />
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ScrollViewer Grid.Column="0"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Agent 配置环境" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ConfigurationDirectory, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1"
+                                            Content="选择"
+                                            Command="{Binding SelectConfigurationDirectoryCommand}"
+                                            Margin="4,0,0,0" />
+                                </Grid>
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="可执行文件" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding Executable, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1"
+                                            Content="选择"
+                                            Command="{Binding SelectExecutableCommand}"
+                                            Margin="4,0,0,0" />
+                                </Grid>
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="受管入口" />
+                                <TextBox Text="{Binding ManagedEntryPath, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="选择运行时" />
+                                <ComboBox ItemsSource="{Binding AvailableRuntimeOptions}"
+                                          SelectedItem="{Binding SelectedRuntimeOption, Mode=TwoWay}"
+                                          DisplayMemberPath="DisplayName" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="运行时名称" />
+                                <TextBox Text="{Binding RuntimeName, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="运行时版本" />
+                                <TextBox Text="{Binding RuntimeVersion, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="工作区（可选）" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding WorkspacePath, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1"
+                                            Content="选择"
+                                            Command="{Binding SelectWorkspaceCommand}"
+                                            Margin="4,0,0,0" />
+                                </Grid>
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="运行时命令（可选）" />
+                                <TextBox Text="{Binding RuntimeCommand, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{Binding DiscoveryResult}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding BindingFilePath, StringFormat=绑定文件：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding RecoveryPointInformation, StringFormat=配置恢复点：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding BindingSummary}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding RecoveryResult, StringFormat=恢复结果：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding HealthResult}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
         </TabControl>
 
         <StatusBar Grid.Row="3"

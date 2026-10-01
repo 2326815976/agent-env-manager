@@ -226,6 +226,13 @@ public sealed class EnvironmentManager
         return _runtimeProviders;
     }
 
+    public IReadOnlyList<string> DescribeAgentAdapters()
+    {
+        return _agentAdapters.Keys
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public Task<RuntimeInstallPreview> PreviewRuntimeInstallAsync(
         string providerId,
         string version,

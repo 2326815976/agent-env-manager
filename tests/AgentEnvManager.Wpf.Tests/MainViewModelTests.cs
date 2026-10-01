@@ -153,6 +153,38 @@ public sealed class MainViewModelTests
             Assert.Single(viewModel.DiagnosticsPackage.Entries).Name);
     }
 
+    [Fact]
+    public void MigrationAndAgentCenters_are_wired_to_selected_environment()
+    {
+        var viewModel = new MainViewModel(new StubManagerClient(
+            new InspectionReport(
+                DateTimeOffset.UnixEpoch,
+                [],
+                [],
+                [])));
+        var selected = new EnvironmentRowViewModel(
+            new ObservedEnvironment(
+                new EnvironmentAsset(
+                    EnvironmentAssetKind.ToolRuntime,
+                    "Node.js",
+                    "24.1.0",
+                    @"D:\Runtimes\node",
+                    IsSystemComponent: false,
+                    DiscoverySourceInfo.PathCommand),
+                new EnvironmentFingerprint("node-24"),
+                ManagementState.Managed,
+                HealthState.Unknown,
+                new EnvironmentIdentity("node-24")));
+
+        viewModel.SelectedEnvironment = selected;
+
+        Assert.NotNull(viewModel.MigrationCenter);
+        Assert.NotNull(viewModel.AgentBinding);
+        Assert.Same(
+            selected,
+            viewModel.MigrationCenter.SelectedEnvironment);
+    }
+
     private sealed class StubManagerClient(InspectionReport report)
         : StubEnvironmentManagerClient
     {
