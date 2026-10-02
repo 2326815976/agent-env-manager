@@ -73,7 +73,8 @@ public sealed class EnvironmentManager
         Func<string, bool>? isReparsePoint = null,
         IProcessControlProbe? processControlProbe = null,
         ICoordinatedStartupProbe? coordinatedStartupProbe = null,
-        ICoordinatedHealthProbe? coordinatedHealthProbe = null)
+        ICoordinatedHealthProbe? coordinatedHealthProbe = null,
+        IShortcutEditor? shortcutEditor = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -242,6 +243,7 @@ public sealed class EnvironmentManager
             activationLink ?? new WindowsJunctionActivationLink(),
             coordinatedStartupProbe ?? new WindowsProcessStartupProbe(),
             coordinatedHealthProbe,
+            shortcutEditor ?? new WindowsShortcutEditor(),
             journal,
             clock);
     }

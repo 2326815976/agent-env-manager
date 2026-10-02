@@ -24,13 +24,19 @@ public sealed record CoordinatedStartupTargets(
     string CcSwitchExecutablePath,
     string ChatGptExecutablePath);
 
+public sealed record CoordinatedShortcutTarget(
+    string ShortcutPath,
+    string TargetPath,
+    string WorkingDirectory);
+
 public sealed record CoordinatedMigrationRequest(
     string CodexConfigSourcePath,
     string CodexConfigDestinationPath,
     string CcSwitchConfigSourcePath,
     string CcSwitchConfigDestinationPath,
     IReadOnlyList<CoordinatedJunctionTarget>? CompatibilityJunctions = null,
-    CoordinatedStartupTargets? StartupTargets = null);
+    CoordinatedStartupTargets? StartupTargets = null,
+    CoordinatedShortcutTarget? ChatGptShortcut = null);
 
 public sealed record CoordinatedMigrationPreview(
     IReadOnlyList<CoordinatedMigrationTarget> Targets,
@@ -39,6 +45,7 @@ public sealed record CoordinatedMigrationPreview(
     IReadOnlyList<string> StartupOrder,
     IReadOnlyList<CoordinatedJunctionTarget> JunctionsToRewire,
     CoordinatedStartupTargets? StartupTargets,
+    CoordinatedShortcutTarget? ChatGptShortcut,
     IReadOnlyList<CoordinatedMigrationBlocker> Blockers,
     string Impact,
     string? OperationId = null,

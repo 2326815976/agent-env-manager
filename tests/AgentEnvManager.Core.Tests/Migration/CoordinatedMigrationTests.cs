@@ -10,6 +10,68 @@ namespace AgentEnvManager.Core.Tests.Migration;
 public sealed class CoordinatedMigrationTests
 {
     [Fact]
+    public async Task ApplyAsync_rewrites_config_toml_and_chatgpt_shortcut()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            var sourceEscaped = request.CodexConfigSourcePath.Replace(
+                "\\",
+                "\\\\");
+            await File.WriteAllTextAsync(
+                Path.Combine(request.CodexConfigSourcePath, "config.toml"),
+                "# 注释保留\n"
+                + $"notify = [\"{sourceEscaped}\\\\notify.exe\"]\n"
+                + "[mcp_servers.node_repl]\n"
+                + $"command = \"{sourceEscaped}\\\\node.exe\"\n"
+                + "unknown_field = \"keep-me\"\n");
+            var shortcutPath = Path.Combine(root, "ChatGPT.lnk");
+            var editor = new RecordingShortcutEditor(
+                new ShortcutState(
+                    @"E:\Old\app\ChatGPT.exe",
+                    @"E:\Old\app"));
+            var requestWithShortcut = request with
+            {
+                ChatGptShortcut = new CoordinatedShortcutTarget(
+                    shortcutPath,
+                    @"E:\Moved\app\ChatGPT.exe",
+                    @"E:\Moved\app")
+            };
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                shortcutEditor: editor);
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                requestWithShortcut);
+            var result = await manager.ApplyCoordinatedMigrationAsync(
+                preview);
+
+            var config = await File.ReadAllTextAsync(Path.Combine(
+                request.CodexConfigDestinationPath,
+                "config.toml"));
+            Assert.Contains("注释保留", config);
+            Assert.Contains("keep-me", config);
+            Assert.DoesNotContain(sourceEscaped, config);
+            Assert.Contains(
+                request.CodexConfigDestinationPath.Replace("\\", "\\\\"),
+                config);
+            Assert.Single(editor.WriteCalls);
+            Assert.Equal(
+                @"E:\Moved\app\ChatGPT.exe",
+                editor.WriteCalls[0].TargetPath);
+            Assert.Contains("config.toml", result.RewrittenPaths);
+            Assert.Contains("ChatGPT 快捷方式", result.RewrittenPaths);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ApplyAsync_starts_cc_switch_before_chatgpt_and_checks_health()
     {
         var root = CreateTempRoot();
@@ -530,7 +592,8 @@ public sealed class CoordinatedMigrationTests
             = null,
         RecordingActivationLink? link = null,
         ICoordinatedStartupProbe? startupProbe = null,
-        ICoordinatedHealthProbe? healthProbe = null)
+        ICoordinatedHealthProbe? healthProbe = null,
+        IShortcutEditor? shortcutEditor = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
@@ -539,6 +602,7 @@ public sealed class CoordinatedMigrationTests
             activationLink: link,
             coordinatedStartupProbe: startupProbe,
             coordinatedHealthProbe: healthProbe,
+            shortcutEditor: shortcutEditor,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),
@@ -554,6 +618,31 @@ public sealed class CoordinatedMigrationTests
             CancellationToken cancellationToken = default)
         {
             StartedPaths.Add(executablePath);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingShortcutEditor(ShortcutState state)
+        : IShortcutEditor
+    {
+        public List<(string Path, string TargetPath, string WorkingDirectory)>
+            WriteCalls
+        { get; } = [];
+
+        public Task<ShortcutState> ReadAsync(
+            string shortcutPath,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(state);
+        }
+
+        public Task WriteAsync(
+            string shortcutPath,
+            string targetPath,
+            string workingDirectory,
+            CancellationToken cancellationToken = default)
+        {
+            WriteCalls.Add((shortcutPath, targetPath, workingDirectory));
             return Task.CompletedTask;
         }
     }

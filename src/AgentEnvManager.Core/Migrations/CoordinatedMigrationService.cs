@@ -13,6 +13,7 @@ internal sealed class CoordinatedMigrationService(
     IEnvironmentActivationLink activationLink,
     ICoordinatedStartupProbe startupProbe,
     ICoordinatedHealthProbe? healthProbe,
+    IShortcutEditor shortcutEditor,
     IOperationJournal operationJournal,
     TimeProvider timeProvider)
 {
@@ -152,6 +153,7 @@ internal sealed class CoordinatedMigrationService(
                 StartupOrder,
                 request.CompatibilityJunctions ?? [],
                 request.StartupTargets,
+                request.ChatGptShortcut,
                 blockers,
                 impact);
         }
@@ -176,6 +178,7 @@ internal sealed class CoordinatedMigrationService(
             StartupOrder,
             request.CompatibilityJunctions ?? [],
             request.StartupTargets,
+            request.ChatGptShortcut,
             blockers,
             impact,
             operation.Id);
@@ -273,6 +276,8 @@ internal sealed class CoordinatedMigrationService(
         var rewritten = new List<string>();
         var rewiredJunctions = new List<string>();
         var previousJunctions = new List<(string Link, string? Target)>();
+        var previousConfigFiles = new List<(string Path, string Content)>();
+        ShortcutState? previousShortcut = null;
         string? originalSettings = null;
         var environmentRewritten = false;
         // 源目录在本阶段保持不动，恢复点为"原环境变量值 + 原 settings.json
@@ -317,6 +322,35 @@ internal sealed class CoordinatedMigrationService(
             await userEnvironmentVariableStore.BroadcastAsync(
                 cancellationToken);
             rewritten.Add(CodexHomeVariableName);
+
+            var configTomlPath = Path.Combine(
+                codexTarget.DestinationPath,
+                "config.toml");
+            if (File.Exists(configTomlPath))
+            {
+                var originalConfig = await File.ReadAllTextAsync(
+                    configTomlPath,
+                    cancellationToken);
+                var updatedConfig = TomlPathRewriter.RewritePathPrefix(
+                    originalConfig,
+                    codexTarget.SourcePath,
+                    codexTarget.DestinationPath);
+                if (!string.Equals(
+                        originalConfig,
+                        updatedConfig,
+                        StringComparison.Ordinal))
+                {
+                    previousConfigFiles.Add(
+                        (configTomlPath, originalConfig));
+                    await File.WriteAllTextAsync(
+                        configTomlPath,
+                        updatedConfig,
+                        new UTF8Encoding(
+                            encoderShouldEmitUTF8Identifier: false),
+                        cancellationToken);
+                    rewritten.Add("config.toml");
+                }
+            }
 
             if (File.Exists(settingsFilePath))
             {
@@ -375,6 +409,19 @@ internal sealed class CoordinatedMigrationService(
                 }
             }
 
+            if (preview.ChatGptShortcut is not null)
+            {
+                previousShortcut = await shortcutEditor.ReadAsync(
+                    preview.ChatGptShortcut.ShortcutPath,
+                    cancellationToken);
+                await shortcutEditor.WriteAsync(
+                    preview.ChatGptShortcut.ShortcutPath,
+                    preview.ChatGptShortcut.TargetPath,
+                    preview.ChatGptShortcut.WorkingDirectory,
+                    cancellationToken);
+                rewritten.Add("ChatGPT 快捷方式");
+            }
+
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginVerification(
                     operation,
@@ -419,6 +466,19 @@ internal sealed class CoordinatedMigrationService(
                         CancellationToken.None);
                 }
 
+                foreach (var (path, content) in previousConfigFiles)
+                {
+                    if (File.Exists(path))
+                    {
+                        await File.WriteAllTextAsync(
+                            path,
+                            content,
+                            new UTF8Encoding(
+                                encoderShouldEmitUTF8Identifier: false),
+                            CancellationToken.None);
+                    }
+                }
+
                 foreach (var (link, previousTarget) in previousJunctions)
                 {
                     if (string.IsNullOrWhiteSpace(previousTarget))
@@ -432,6 +492,16 @@ internal sealed class CoordinatedMigrationService(
                     await activationLink.SetTargetAsync(
                         link,
                         previousTarget,
+                        CancellationToken.None);
+                }
+
+                if (previousShortcut is not null
+                    && preview.ChatGptShortcut is not null)
+                {
+                    await shortcutEditor.WriteAsync(
+                        preview.ChatGptShortcut.ShortcutPath,
+                        previousShortcut.TargetPath ?? string.Empty,
+                        previousShortcut.WorkingDirectory ?? string.Empty,
                         CancellationToken.None);
                 }
 
