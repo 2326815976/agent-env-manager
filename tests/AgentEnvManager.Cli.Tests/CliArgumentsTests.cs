@@ -46,6 +46,47 @@ public sealed class CliArgumentsTests
     }
 
     [Fact]
+    public void Parse_coordinated_migrate_captures_paths_and_confirmation()
+    {
+        var request = CliArguments.Parse(
+            [
+                "coordinated-migrate",
+                "--codex-source",
+                @"E:\Codex\.codex",
+                "--codex-dest",
+                @"E:\Moved\.codex",
+                "--cc-switch-source",
+                @"E:\Codex\.cc-switch",
+                "--cc-switch-dest",
+                @"E:\Moved\.cc-switch",
+                "--confirm"
+            ]);
+
+        Assert.Equal(CliAction.CoordinatedMigrationApply, request.Action);
+        Assert.Equal(@"E:\Codex\.codex", request.CodexSourcePath);
+        Assert.Equal(@"E:\Moved\.codex", request.CodexDestinationPath);
+        Assert.Equal(@"E:\Codex\.cc-switch", request.CcSwitchSourcePath);
+        Assert.Equal(
+            @"E:\Moved\.cc-switch",
+            request.CcSwitchDestinationPath);
+        Assert.True(request.Confirmed);
+    }
+
+    [Fact]
+    public void Parse_coordinated_migrate_preview_requires_all_paths()
+    {
+        var request = CliArguments.Parse(
+            [
+                "coordinated-migrate-preview",
+                "--codex-source",
+                @"E:\Codex\.codex"
+            ]);
+
+        Assert.Equal(CliAction.Invalid, request.Action);
+        Assert.Contains("--codex-dest", request.Error!);
+    }
+
+    [Fact]
     public void Parse_env_vars_lists_environment_variables()
     {
         var request = CliArguments.Parse(["env-vars"]);

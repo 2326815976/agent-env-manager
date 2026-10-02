@@ -15,6 +15,8 @@ internal enum CliAction
     CcSwitchInspect,
     CcSwitchBindPreview,
     CcSwitchBind,
+    CoordinatedMigrationPreview,
+    CoordinatedMigrationApply,
     RuntimeList,
     RuntimeInstallPreview,
     RuntimeInstall,
@@ -45,6 +47,10 @@ internal sealed record CliRequest(
     string? ManagedPathEntry = null,
     string? ConfigRoot = null,
     string? CodexHome = null,
+    string? CodexSourcePath = null,
+    string? CodexDestinationPath = null,
+    string? CcSwitchSourcePath = null,
+    string? CcSwitchDestinationPath = null,
     bool ShowSecrets = false,
     string? AgentName = null,
     string? ConfigurationDirectory = null,
@@ -114,6 +120,12 @@ internal static class CliArguments
                 args,
                 isPreview: true),
             "cc-switch-bind" => ParseCcSwitchBind(
+                args,
+                isPreview: false),
+            "coordinated-migrate-preview" => ParseCoordinatedMigration(
+                args,
+                isPreview: true),
+            "coordinated-migrate" => ParseCoordinatedMigration(
                 args,
                 isPreview: false),
             "runtimes" => Exact(args, CliAction.RuntimeList),
@@ -369,6 +381,60 @@ internal static class CliArguments
                 : CliAction.CcSwitchBind,
             ConfigRoot: configRoot,
             CodexHome: codexHome,
+            Confirmed: confirmed);
+    }
+
+    private static CliRequest ParseCoordinatedMigration(
+        IReadOnlyList<string> args,
+        bool isPreview)
+    {
+        if (!TryParseOptions(
+            args,
+            1,
+            [
+                "--codex-source",
+                "--codex-dest",
+                "--cc-switch-source",
+                "--cc-switch-dest"
+            ],
+            allowConfirm: !isPreview,
+            out var options,
+            out var confirmed,
+            out var error))
+        {
+            return Invalid(error!);
+        }
+
+        if (!TryGetRequiredOption(
+                options,
+                "--codex-source",
+                out var codexSource)
+            || !TryGetRequiredOption(
+                options,
+                "--codex-dest",
+                out var codexDestination)
+            || !TryGetRequiredOption(
+                options,
+                "--cc-switch-source",
+                out var ccSwitchSource)
+            || !TryGetRequiredOption(
+                options,
+                "--cc-switch-dest",
+                out var ccSwitchDestination))
+        {
+            return Invalid(
+                $"{args[0]} 需要 --codex-source、--codex-dest、" +
+                "--cc-switch-source 与 --cc-switch-dest。");
+        }
+
+        return new CliRequest(
+            isPreview
+                ? CliAction.CoordinatedMigrationPreview
+                : CliAction.CoordinatedMigrationApply,
+            CodexSourcePath: codexSource,
+            CodexDestinationPath: codexDestination,
+            CcSwitchSourcePath: ccSwitchSource,
+            CcSwitchDestinationPath: ccSwitchDestination,
             Confirmed: confirmed);
     }
 

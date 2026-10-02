@@ -312,4 +312,72 @@ internal sealed class FakeCliEnvironmentManager : ICliEnvironmentManager
         CcSwitchBindCalls++;
         return Task.FromResult(CcSwitchBindingResult);
     }
+
+    public IReadOnlyList<CoordinatedMigrationBlocker> MigrationBlockers
+    { get; set; } = [];
+
+    public IReadOnlyList<string> PlannedRewrites { get; set; } = [];
+
+    public int CoordinatedMigrationCalls { get; private set; }
+
+    public CoordinatedMigrationRequest? LastCoordinatedRequest
+    { get; private set; }
+
+    public Task<CoordinatedMigrationPreview>
+        PreviewCoordinatedMigrationAsync(
+            CoordinatedMigrationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        LastCoordinatedRequest = request;
+        return Task.FromResult(new CoordinatedMigrationPreview(
+            [
+                new CoordinatedMigrationTarget(
+                    "codex-config",
+                    "Codex 配置环境",
+                    request.CodexConfigSourcePath,
+                    request.CodexConfigDestinationPath),
+                new CoordinatedMigrationTarget(
+                    "cc-switch-config",
+                    "CC Switch 配置环境",
+                    request.CcSwitchConfigSourcePath,
+                    request.CcSwitchConfigDestinationPath)
+            ],
+            [
+                new MigrationProcessRequirement(
+                    "chatgpt",
+                    "ChatGPT",
+                    ["ChatGPT"])
+            ],
+            PlannedRewrites,
+            ["先启动 CC Switch，等待其配置写入完成", "再启动 ChatGPT"],
+            [],
+            null,
+            null,
+            MigrationBlockers,
+            "默认复制并校验，原路径保留到健康检查通过。",
+            "operation-migrate",
+            null));
+    }
+
+    public Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        CoordinatedMigrationCalls++;
+        return Task.FromResult(new CoordinatedMigrationResult(
+            new OperationRecord(
+                "operation-migrate",
+                OperationType.Migrate,
+                OperationState.Succeeded,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch,
+                "协同迁移"),
+            preview.Targets
+                .Select(target => target.DestinationPath)
+                .ToArray(),
+            ["CODEX_HOME", "codexConfigDir"],
+            [],
+            ["quarantine-1", "quarantine-2"],
+            SourcesRetained: false));
+    }
 }

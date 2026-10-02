@@ -12,6 +12,77 @@ namespace AgentEnvManager.Cli.Tests;
 public sealed class CliApplicationTests
 {
     [Fact]
+    public async Task CoordinatedMigrate_without_confirmation_renders_preview_only()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            PlannedRewrites = ["用户环境变量 CODEX_HOME", "config.toml 绝对路径"]
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "coordinated-migrate",
+                "--codex-source",
+                @"E:\Codex\.codex",
+                "--codex-dest",
+                @"E:\Moved\.codex",
+                "--cc-switch-source",
+                @"E:\Codex\.cc-switch",
+                "--cc-switch-dest",
+                @"E:\Moved\.cc-switch"
+            ],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(0, manager.CoordinatedMigrationCalls);
+        Assert.Equal(
+            @"E:\Codex\.codex",
+            manager.LastCoordinatedRequest?.CodexConfigSourcePath);
+        Assert.Contains("协同迁移预览", output.ToString());
+        Assert.Contains("CODEX_HOME", output.ToString());
+        Assert.Contains("启动顺序", output.ToString());
+        Assert.Contains("--confirm", error.ToString());
+    }
+
+    [Fact]
+    public async Task CoordinatedMigrate_with_confirmation_applies_plan()
+    {
+        var manager = new FakeCliEnvironmentManager();
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "coordinated-migrate",
+                "--codex-source",
+                @"E:\Codex\.codex",
+                "--codex-dest",
+                @"E:\Moved\.codex",
+                "--cc-switch-source",
+                @"E:\Codex\.cc-switch",
+                "--cc-switch-dest",
+                @"E:\Moved\.cc-switch",
+                "--confirm"
+            ],
+            () => manager,
+            output,
+            error);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Equal(1, manager.CoordinatedMigrationCalls);
+        Assert.Contains("协同迁移完成", text);
+        Assert.Contains(@"E:\Moved\.codex", text);
+        Assert.Contains("源目录已隔离", text);
+        Assert.Contains("quarantine-1", text);
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
     public async Task CcSwitch_renders_discovery_result()
     {
         var manager = new FakeCliEnvironmentManager

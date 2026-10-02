@@ -119,6 +119,14 @@ internal interface ICliEnvironmentManager
     Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
         CcSwitchBindingPreview preview,
         CancellationToken cancellationToken = default);
+
+    Task<CoordinatedMigrationPreview> PreviewCoordinatedMigrationAsync(
+        CoordinatedMigrationRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default);
 }
 
 internal sealed class EnvironmentManagerCliAdapter(
@@ -183,6 +191,25 @@ internal sealed class EnvironmentManagerCliAdapter(
         CancellationToken cancellationToken = default)
     {
         return manager.ApplyCcSwitchCodexConfigDirAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<CoordinatedMigrationPreview>
+        PreviewCoordinatedMigrationAsync(
+            CoordinatedMigrationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewCoordinatedMigrationAsync(
+            request,
+            cancellationToken);
+    }
+
+    public Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.ApplyCoordinatedMigrationAsync(
             preview,
             cancellationToken);
     }

@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.Storage;
 
@@ -217,6 +218,38 @@ public static class CliApplication
                                 preview,
                                 token);
                         CcSwitchReportRenderer.WriteBinding(bound, output);
+                    },
+                    output,
+                    error,
+                    cancellationToken);
+
+            case CliAction.CoordinatedMigrationPreview:
+            case CliAction.CoordinatedMigrationApply:
+                var coordinatedRequest = new CoordinatedMigrationRequest(
+                    request.CodexSourcePath!,
+                    request.CodexDestinationPath!,
+                    request.CcSwitchSourcePath!,
+                    request.CcSwitchDestinationPath!);
+                var coordinatedPreview =
+                    await manager.PreviewCoordinatedMigrationAsync(
+                        coordinatedRequest,
+                        cancellationToken);
+                return await ExecuteConfirmedPlanAsync(
+                    request.Confirmed,
+                    coordinatedPreview,
+                    (preview, writer) =>
+                        CoordinatedMigrationReportRenderer.WritePreview(
+                            preview,
+                            writer),
+                    async (preview, token) =>
+                    {
+                        var migrated =
+                            await manager.ApplyCoordinatedMigrationAsync(
+                                preview,
+                                token);
+                        CoordinatedMigrationReportRenderer.WriteResult(
+                            migrated,
+                            output);
                     },
                     output,
                     error,
