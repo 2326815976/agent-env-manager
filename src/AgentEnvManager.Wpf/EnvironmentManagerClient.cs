@@ -167,6 +167,25 @@ public sealed class EnvironmentManagerClient(EnvironmentManager manager)
             cancellationToken);
     }
 
+    public Task<CoordinatedMigrationPreview>
+        PreviewCoordinatedMigrationAsync(
+            CoordinatedMigrationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewCoordinatedMigrationAsync(
+            request,
+            cancellationToken);
+    }
+
+    public Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.ApplyCoordinatedMigrationAsync(
+            preview,
+            cancellationToken);
+    }
+
     public Task<AgentDiscoveryResult> DiscoverAgentAsync(
         string agentName,
         AgentDiscoveryRequest request,

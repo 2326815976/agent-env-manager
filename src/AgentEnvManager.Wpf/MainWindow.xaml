@@ -627,6 +627,70 @@
                     </Grid>
                 </Grid>
             </TabItem>
+            <TabItem Header="协同迁移"
+                     DataContext="{Binding CoordinatedMigration}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,10">
+                        <Button Content="生成迁移计划"
+                                Command="{Binding PreviewCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="执行迁移"
+                                Command="{Binding ApplyCommand}"
+                                Padding="14,6"
+                                Margin="0,0,16,0" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#52616B"
+                                   Text="{Binding StatusMessage}" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Codex 配置环境源目录" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding CodexSource, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="Codex 配置环境目标目录" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding CodexDestination, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="CC Switch 配置环境源目录" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding CcSwitchSource, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="CC Switch 配置环境目标目录" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding CcSwitchDestination, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock Margin="0,12,0,0"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding BlockersLabel}" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding Impact, StringFormat=影响范围：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding PlannedRewritesLabel, StringFormat=计划重写：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,8,0,0"
+                                       Text="{Binding StartupOrderLabel, StringFormat=启动顺序：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PendingOperation, StringFormat=操作 ID：{0}}" />
+                            <TextBlock Text="{Binding PendingRecoveryPoint, StringFormat=恢复点：{0}}" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding Result}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
             <TabItem Header="CC Switch"
                      DataContext="{Binding CcSwitch}">
                 <Grid Margin="12">

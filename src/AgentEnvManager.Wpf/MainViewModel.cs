@@ -51,6 +51,9 @@ public sealed class MainViewModel : ObservableObject
         CcSwitch = new CcSwitchViewModel(
             client,
             OperationCenter.RefreshAsync);
+        CoordinatedMigration = new CoordinatedMigrationViewModel(
+            client,
+            OperationCenter.RefreshAsync);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -88,6 +91,8 @@ public sealed class MainViewModel : ObservableObject
     public AgentBindingViewModel AgentBinding { get; }
 
     public CcSwitchViewModel CcSwitch { get; }
+
+    public CoordinatedMigrationViewModel CoordinatedMigration { get; }
 
     public ObservableCollection<PathConflictViewModel> PathConflicts { get; } = [];
 

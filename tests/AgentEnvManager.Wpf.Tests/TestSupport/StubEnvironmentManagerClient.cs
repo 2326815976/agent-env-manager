@@ -256,6 +256,22 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
         throw new NotSupportedException();
     }
 
+    public virtual Task<CoordinatedMigrationPreview>
+        PreviewCoordinatedMigrationAsync(
+            CoordinatedMigrationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<CoordinatedMigrationResult>
+        ApplyCoordinatedMigrationAsync(
+            CoordinatedMigrationPreview preview,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
     public virtual Task<AgentDiscoveryResult> DiscoverAgentAsync(
         string agentName,
         AgentDiscoveryRequest request,

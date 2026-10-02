@@ -22,6 +22,7 @@ public sealed class ClientRoleBoundaryTests
             typeof(IMigrationClient),
             typeof(IAgentDiscoveryClient),
             typeof(ICcSwitchClient),
+            typeof(ICoordinatedMigrationClient),
             typeof(IAgentBindingClient),
             typeof(IOperationJournalClient),
             typeof(IEnvironmentDeletionClient)
@@ -110,9 +111,12 @@ public sealed class ClientRoleBoundaryTests
             binding,
             catalog);
         var ccSwitchCenter = new CcSwitchViewModel(ccSwitch);
+        var coordinatedCenter = new CoordinatedMigrationViewModel(
+            new RoleScopedCoordinatedMigrationClient());
 
         Assert.NotNull(migrationCenter);
         Assert.NotNull(ccSwitchCenter);
+        Assert.NotNull(coordinatedCenter);
         Assert.Equal(
             ["ChatGPT", "CC Switch"],
             agentBinding.AvailableAgents);
@@ -271,6 +275,27 @@ public sealed class ClientRoleBoundaryTests
         {
             throw new NotSupportedException(
                 "测试替身未提供 CC Switch 绑定能力。");
+        }
+    }
+
+    private sealed class RoleScopedCoordinatedMigrationClient
+        : ICoordinatedMigrationClient
+    {
+        public Task<CoordinatedMigrationPreview>
+            PreviewCoordinatedMigrationAsync(
+                CoordinatedMigrationRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "测试替身未提供协同迁移预览能力。");
+        }
+
+        public Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+            CoordinatedMigrationPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "测试替身未提供协同迁移执行能力。");
         }
     }
 

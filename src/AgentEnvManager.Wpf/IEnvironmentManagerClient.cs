@@ -106,6 +106,17 @@ public interface ICcSwitchClient
         CancellationToken cancellationToken = default);
 }
 
+public interface ICoordinatedMigrationClient
+{
+    Task<CoordinatedMigrationPreview> PreviewCoordinatedMigrationAsync(
+        CoordinatedMigrationRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IAgentBindingClient
 {
     Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
@@ -186,6 +197,7 @@ public interface IEnvironmentManagerClient
       IMigrationClient,
       IAgentDiscoveryClient,
       ICcSwitchClient,
+      ICoordinatedMigrationClient,
       IAgentBindingClient,
       IOperationJournalClient,
       IEnvironmentDeletionClient
