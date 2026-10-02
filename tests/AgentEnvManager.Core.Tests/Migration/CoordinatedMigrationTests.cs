@@ -72,6 +72,78 @@ public sealed class CoordinatedMigrationTests
     }
 
     [Fact]
+    public async Task ApplyAsync_restores_quarantined_source_when_later_quarantine_fails()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            var journal = new RecordingOperationJournal();
+            var quarantine = new FailingQuarantineStore(failOnCall: 1);
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                journal,
+                sourceQuarantine: quarantine);
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.ApplyCoordinatedMigrationAsync(preview));
+
+            Assert.Contains("已恢复原状态", exception.Message);
+            Assert.Equal(1, quarantine.RestoreCalls);
+            Assert.Equal(2, quarantine.QuarantineCalls);
+            var operation = journal.History
+                .Where(record => record.Id == preview.OperationId)
+                .GroupBy(record => record.Id)
+                .Select(group => group.Last())
+                .Single();
+            Assert.Equal(OperationState.RolledBack, operation.State);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class FailingQuarantineStore(int failOnCall)
+        : IMigrationSourceQuarantineStore
+    {
+        public int QuarantineCalls { get; private set; }
+
+        public int RestoreCalls { get; private set; }
+
+        public Task<string> QuarantineAsync(
+            string sourcePath,
+            CancellationToken cancellationToken = default)
+        {
+            QuarantineCalls++;
+            if (QuarantineCalls > failOnCall)
+            {
+                throw new InvalidOperationException("模拟隔离失败。");
+            }
+
+            return Task.FromResult($"quarantine-{QuarantineCalls}");
+        }
+
+        public Task RestoreAsync(
+            string quarantineId,
+            CancellationToken cancellationToken = default)
+        {
+            RestoreCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(
+            string quarantineId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
     public async Task ApplyAsync_starts_cc_switch_before_chatgpt_and_checks_health()
     {
         var root = CreateTempRoot();
@@ -308,9 +380,11 @@ public sealed class CoordinatedMigrationTests
                 preview);
 
             Assert.Equal(OperationState.Succeeded, result.Operation.State);
-            Assert.True(result.SourcesRetained);
+            Assert.False(result.SourcesRetained);
+            Assert.Equal(2, result.QuarantinedSourceIds.Count);
             Assert.Single(probe.StopHistory);
-            Assert.True(Directory.Exists(request.CodexConfigSourcePath));
+            Assert.False(Directory.Exists(request.CodexConfigSourcePath));
+            Assert.False(Directory.Exists(request.CcSwitchConfigSourcePath));
             Assert.True(Directory.Exists(
                 Path.Combine(
                     request.CodexConfigDestinationPath,
@@ -593,7 +667,8 @@ public sealed class CoordinatedMigrationTests
         RecordingActivationLink? link = null,
         ICoordinatedStartupProbe? startupProbe = null,
         ICoordinatedHealthProbe? healthProbe = null,
-        IShortcutEditor? shortcutEditor = null)
+        IShortcutEditor? shortcutEditor = null,
+        IMigrationSourceQuarantineStore? sourceQuarantine = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
@@ -603,6 +678,9 @@ public sealed class CoordinatedMigrationTests
             coordinatedStartupProbe: startupProbe,
             coordinatedHealthProbe: healthProbe,
             shortcutEditor: shortcutEditor,
+            migrationSourceQuarantine: sourceQuarantine
+                ?? new FileSystemMigrationSourceQuarantine(
+                    Path.Combine(root, "quarantine")),
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),

@@ -83,4 +83,5 @@ public sealed record CoordinatedMigrationResult(
     IReadOnlyList<string> MigratedPaths,
     IReadOnlyList<string> RewrittenPaths,
     IReadOnlyList<string> RewiredJunctions,
+    IReadOnlyList<string> QuarantinedSourceIds,
     bool SourcesRetained);

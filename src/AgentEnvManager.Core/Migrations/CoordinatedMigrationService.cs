@@ -14,6 +14,7 @@ internal sealed class CoordinatedMigrationService(
     ICoordinatedStartupProbe startupProbe,
     ICoordinatedHealthProbe? healthProbe,
     IShortcutEditor shortcutEditor,
+    IMigrationSourceQuarantineStore sourceQuarantine,
     IOperationJournal operationJournal,
     TimeProvider timeProvider)
 {
@@ -278,6 +279,7 @@ internal sealed class CoordinatedMigrationService(
         var previousJunctions = new List<(string Link, string? Target)>();
         var previousConfigFiles = new List<(string Path, string Content)>();
         ShortcutState? previousShortcut = null;
+        var quarantinedSourceIds = new List<string>();
         string? originalSettings = null;
         var environmentRewritten = false;
         // 源目录在本阶段保持不动，恢复点为"原环境变量值 + 原 settings.json
@@ -422,6 +424,14 @@ internal sealed class CoordinatedMigrationService(
                 rewritten.Add("ChatGPT 快捷方式");
             }
 
+            foreach (var target in preview.Targets)
+            {
+                quarantinedSourceIds.Add(
+                    await sourceQuarantine.QuarantineAsync(
+                        target.SourcePath,
+                        cancellationToken));
+            }
+
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginVerification(
                     operation,
@@ -436,7 +446,8 @@ internal sealed class CoordinatedMigrationService(
                 copiedPaths,
                 rewritten,
                 rewiredJunctions,
-                SourcesRetained: true);
+                quarantinedSourceIds,
+                SourcesRetained: false);
         }
         catch (Exception exception)
         {
@@ -502,6 +513,13 @@ internal sealed class CoordinatedMigrationService(
                         preview.ChatGptShortcut.ShortcutPath,
                         previousShortcut.TargetPath ?? string.Empty,
                         previousShortcut.WorkingDirectory ?? string.Empty,
+                        CancellationToken.None);
+                }
+
+                foreach (var quarantineId in quarantinedSourceIds)
+                {
+                    await sourceQuarantine.RestoreAsync(
+                        quarantineId,
                         CancellationToken.None);
                 }
 

@@ -74,7 +74,8 @@ public sealed class EnvironmentManager
         IProcessControlProbe? processControlProbe = null,
         ICoordinatedStartupProbe? coordinatedStartupProbe = null,
         ICoordinatedHealthProbe? coordinatedHealthProbe = null,
-        IShortcutEditor? shortcutEditor = null)
+        IShortcutEditor? shortcutEditor = null,
+        IMigrationSourceQuarantineStore? migrationSourceQuarantine = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -244,6 +245,9 @@ public sealed class EnvironmentManager
             coordinatedStartupProbe ?? new WindowsProcessStartupProbe(),
             coordinatedHealthProbe,
             shortcutEditor ?? new WindowsShortcutEditor(),
+            migrationSourceQuarantine
+                ?? new FileSystemMigrationSourceQuarantine(
+                    resolvedManagerPaths.QuarantineDirectory),
             journal,
             clock);
     }
