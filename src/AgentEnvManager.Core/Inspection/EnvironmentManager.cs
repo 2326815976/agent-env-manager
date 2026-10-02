@@ -71,7 +71,9 @@ public sealed class EnvironmentManager
         IDiagnosticPackageService? diagnosticPackageService = null,
         IAgentConfigurationBackupStore? agentConfigurationBackupStore = null,
         Func<string, bool>? isReparsePoint = null,
-        IProcessControlProbe? processControlProbe = null)
+        IProcessControlProbe? processControlProbe = null,
+        ICoordinatedStartupProbe? coordinatedStartupProbe = null,
+        ICoordinatedHealthProbe? coordinatedHealthProbe = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -238,6 +240,8 @@ public sealed class EnvironmentManager
             userEnvironmentVariableStore
                 ?? new WindowsUserEnvironmentVariableStore(),
             activationLink ?? new WindowsJunctionActivationLink(),
+            coordinatedStartupProbe ?? new WindowsProcessStartupProbe(),
+            coordinatedHealthProbe,
             journal,
             clock);
     }

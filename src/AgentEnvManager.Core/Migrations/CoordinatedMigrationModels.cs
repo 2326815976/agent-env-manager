@@ -20,12 +20,17 @@ public sealed record CoordinatedJunctionTarget(
     string LinkPath,
     string TargetPath);
 
+public sealed record CoordinatedStartupTargets(
+    string CcSwitchExecutablePath,
+    string ChatGptExecutablePath);
+
 public sealed record CoordinatedMigrationRequest(
     string CodexConfigSourcePath,
     string CodexConfigDestinationPath,
     string CcSwitchConfigSourcePath,
     string CcSwitchConfigDestinationPath,
-    IReadOnlyList<CoordinatedJunctionTarget>? CompatibilityJunctions = null);
+    IReadOnlyList<CoordinatedJunctionTarget>? CompatibilityJunctions = null,
+    CoordinatedStartupTargets? StartupTargets = null);
 
 public sealed record CoordinatedMigrationPreview(
     IReadOnlyList<CoordinatedMigrationTarget> Targets,
@@ -33,6 +38,7 @@ public sealed record CoordinatedMigrationPreview(
     IReadOnlyList<string> PlannedRewrites,
     IReadOnlyList<string> StartupOrder,
     IReadOnlyList<CoordinatedJunctionTarget> JunctionsToRewire,
+    CoordinatedStartupTargets? StartupTargets,
     IReadOnlyList<CoordinatedMigrationBlocker> Blockers,
     string Impact,
     string? OperationId = null,
@@ -49,6 +55,19 @@ public interface IProcessControlProbe
 
     Task StopProcessesAsync(
         IReadOnlyList<string> processNames,
+        CancellationToken cancellationToken = default);
+}
+
+public interface ICoordinatedStartupProbe
+{
+    Task StartAsync(
+        string executablePath,
+        CancellationToken cancellationToken = default);
+}
+
+public interface ICoordinatedHealthProbe
+{
+    Task<Agents.AgentHealthCheckResult> CheckAsync(
         CancellationToken cancellationToken = default);
 }
 

@@ -11,6 +11,8 @@ internal sealed class CoordinatedMigrationService(
     IProcessControlProbe processProbe,
     IUserEnvironmentVariableStore userEnvironmentVariableStore,
     IEnvironmentActivationLink activationLink,
+    ICoordinatedStartupProbe startupProbe,
+    ICoordinatedHealthProbe? healthProbe,
     IOperationJournal operationJournal,
     TimeProvider timeProvider)
 {
@@ -149,6 +151,7 @@ internal sealed class CoordinatedMigrationService(
                 PlannedRewrites,
                 StartupOrder,
                 request.CompatibilityJunctions ?? [],
+                request.StartupTargets,
                 blockers,
                 impact);
         }
@@ -172,6 +175,7 @@ internal sealed class CoordinatedMigrationService(
             PlannedRewrites,
             StartupOrder,
             request.CompatibilityJunctions ?? [],
+            request.StartupTargets,
             blockers,
             impact,
             operation.Id);
@@ -347,6 +351,28 @@ internal sealed class CoordinatedMigrationService(
                     junction.TargetPath,
                     cancellationToken);
                 rewiredJunctions.Add(junction.LinkPath);
+            }
+
+            if (preview.StartupTargets is not null)
+            {
+                if (healthProbe is null)
+                {
+                    throw new InvalidOperationException(
+                        "未配置健康检查，无法验证迁移后的启动链。");
+                }
+
+                await startupProbe.StartAsync(
+                    preview.StartupTargets.CcSwitchExecutablePath,
+                    cancellationToken);
+                await startupProbe.StartAsync(
+                    preview.StartupTargets.ChatGptExecutablePath,
+                    cancellationToken);
+                var health = await healthProbe.CheckAsync(cancellationToken);
+                if (!health.IsHealthy)
+                {
+                    throw new InvalidOperationException(
+                        $"迁移后健康检查失败: {health.Message}");
+                }
             }
 
             operation = await SaveTransitionAsync(

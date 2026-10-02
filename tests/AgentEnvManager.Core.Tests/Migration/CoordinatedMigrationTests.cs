@@ -1,3 +1,4 @@
+using AgentEnvManager.Core.Agents;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Migrations;
 using AgentEnvManager.Core.Operations;
@@ -8,6 +9,96 @@ namespace AgentEnvManager.Core.Tests.Migration;
 
 public sealed class CoordinatedMigrationTests
 {
+    [Fact]
+    public async Task ApplyAsync_starts_cc_switch_before_chatgpt_and_checks_health()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var startup = new RecordingStartupProbe();
+            var health = new RecordingHealthProbe(isHealthy: true);
+            var request = CreateRequest(root) with
+            {
+                StartupTargets = new CoordinatedStartupTargets(
+                    @"D:\Software\CCSwitch\cc-switch.exe",
+                    @"E:\Codex\app\ChatGPT.exe")
+            };
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                startupProbe: startup,
+                healthProbe: health);
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+            var result = await manager.ApplyCoordinatedMigrationAsync(
+                preview);
+
+            Assert.Equal(
+                [
+                    @"D:\Software\CCSwitch\cc-switch.exe",
+                    @"E:\Codex\app\ChatGPT.exe"
+                ],
+                startup.StartedPaths);
+            Assert.Equal(1, health.Calls);
+            Assert.Equal(OperationState.Succeeded, result.Operation.State);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyAsync_rolls_back_when_health_check_fails()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var store = new RecordingUserEnvironmentVariableStore(
+                new Dictionary<string, string?>
+                {
+                    ["CODEX_HOME"] = @"E:\Old\.codex"
+                });
+            var journal = new RecordingOperationJournal();
+            var request = CreateRequest(root) with
+            {
+                StartupTargets = new CoordinatedStartupTargets(
+                    @"D:\Software\CCSwitch\cc-switch.exe",
+                    @"E:\Codex\app\ChatGPT.exe")
+            };
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                journal,
+                store,
+                startupProbe: new RecordingStartupProbe(),
+                healthProbe: new RecordingHealthProbe(isHealthy: false));
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.ApplyCoordinatedMigrationAsync(preview));
+
+            Assert.Contains("健康检查失败", exception.Message);
+            Assert.Contains("已恢复原状态", exception.Message);
+            Assert.Equal(@"E:\Old\.codex", await store.GetAsync("CODEX_HOME"));
+            Assert.False(Directory.Exists(
+                request.CodexConfigDestinationPath));
+            var operation = journal.History
+                .Where(record => record.Id == preview.OperationId)
+                .GroupBy(record => record.Id)
+                .Select(group => group.Last())
+                .Single();
+            Assert.Equal(OperationState.RolledBack, operation.State);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task ApplyAsync_rewires_compatibility_junctions()
     {
@@ -437,17 +528,49 @@ public sealed class CoordinatedMigrationTests
         RecordingOperationJournal journal,
         RecordingUserEnvironmentVariableStore? userEnvironmentVariableStore
             = null,
-        RecordingActivationLink? link = null)
+        RecordingActivationLink? link = null,
+        ICoordinatedStartupProbe? startupProbe = null,
+        ICoordinatedHealthProbe? healthProbe = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
             operationJournal: journal,
             userEnvironmentVariableStore: userEnvironmentVariableStore,
             activationLink: link,
+            coordinatedStartupProbe: startupProbe,
+            coordinatedHealthProbe: healthProbe,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),
             processControlProbe: processProbe);
+    }
+
+    private sealed class RecordingStartupProbe : ICoordinatedStartupProbe
+    {
+        public List<string> StartedPaths { get; } = [];
+
+        public Task StartAsync(
+            string executablePath,
+            CancellationToken cancellationToken = default)
+        {
+            StartedPaths.Add(executablePath);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingHealthProbe(bool isHealthy)
+        : ICoordinatedHealthProbe
+    {
+        public int Calls { get; private set; }
+
+        public Task<AgentHealthCheckResult> CheckAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new AgentHealthCheckResult(
+                isHealthy,
+                isHealthy ? "工具调用成功。" : "工具调用失败。"));
+        }
     }
 
     private static string CreateTempRoot()
