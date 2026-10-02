@@ -117,6 +117,8 @@ env-vars-apply [--set NAME=VALUE] [--managed-path <path>] --confirm
 cc-switch [--config-root <path>]
 cc-switch-bind-preview --config-root <path> --codex-home <path>
 cc-switch-bind --config-root <path> --codex-home <path> --confirm
+coordinated-migrate-preview --codex-source <path> --codex-dest <path> --cc-switch-source <path> --cc-switch-dest <path>
+coordinated-migrate --codex-source <path> --codex-dest <path> --cc-switch-source <path> --cc-switch-dest <path> --confirm
 migrate-preview <fingerprint> <destination>
 migrate <fingerprint> <destination> --confirm
 rollback-preview <operation-id>

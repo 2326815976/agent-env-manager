@@ -592,6 +592,8 @@ public sealed class CoordinatedMigrationTests
             await link.SetTargetAsync(codexLink, @"E:\Old\.codex");
             await link.SetTargetAsync(ccLink, @"E:\Old\.cc-switch");
             var startup = new RecordingStartupProbe();
+            var quarantine = new FileSystemMigrationSourceQuarantine(
+                Path.Combine(root, "quarantine"));
             var shortcutEditor = new RecordingShortcutEditor(
                 new ShortcutState(
                     @"E:\Old\app\ChatGPT.exe",
@@ -604,7 +606,8 @@ public sealed class CoordinatedMigrationTests
                 link,
                 startup,
                 new RecordingHealthProbe(isHealthy: true),
-                shortcutEditor);
+                shortcutEditor,
+                quarantine);
 
             var preview = await manager.PreviewCoordinatedMigrationAsync(
                 requestWithRewiring);
@@ -615,8 +618,21 @@ public sealed class CoordinatedMigrationTests
             // 迁移结果与操作记录
             Assert.Equal(OperationState.Succeeded, result.Operation.State);
             Assert.Equal(2, result.QuarantinedSourceIds.Count);
+            Assert.False(
+                string.IsNullOrWhiteSpace(result.Operation.Impact));
+            Assert.False(
+                string.IsNullOrWhiteSpace(
+                    result.Operation.RecoveryPointId));
+            Assert.False(string.IsNullOrWhiteSpace(result.Operation.Id));
             Assert.False(Directory.Exists(request.CodexConfigSourcePath));
             Assert.False(Directory.Exists(request.CcSwitchConfigSourcePath));
+
+            // 隔离区可恢复：把源目录移回并确认内容完整
+            await quarantine.RestoreAsync(result.QuarantinedSourceIds[0]);
+            Assert.True(Directory.Exists(request.CodexConfigSourcePath));
+            Assert.True(File.Exists(Path.Combine(
+                request.CodexConfigSourcePath,
+                "config.toml")));
 
             // 配置内容：路径改写且注释/未知字段/provider 内容保留
             var config = await File.ReadAllTextAsync(Path.Combine(
