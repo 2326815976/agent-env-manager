@@ -241,7 +241,7 @@ public sealed class EnvironmentManager
                 new FileSystemMigrationSourceQuarantine(
                     resolvedManagerPaths.QuarantineDirectory),
                 new WindowsCoordinatedTargetsProvider(),
-                new WindowsLauncherScriptHealthProbe(
+                new WindowsAppServerHealthProbe(
                     new SystemAgentProcessRunner()));
         _coordinatedMigration = new CoordinatedMigrationService(
             migrationWiring.ProcessControl,
