@@ -535,6 +535,131 @@ public sealed class CoordinatedMigrationTests
     }
 
     [Fact]
+    public async Task Acceptance_full_migration_rewrites_every_artifact()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            var sourceEscaped = request.CodexConfigSourcePath.Replace(
+                "\\",
+                "\\\\");
+            await File.WriteAllTextAsync(
+                Path.Combine(request.CodexConfigSourcePath, "config.toml"),
+                "# 注释保留\n"
+                + $"notify = [\"{sourceEscaped}\\\\notify.exe\"]\n"
+                + "unknown_field = \"keep-me\"\n");
+            await File.WriteAllTextAsync(
+                Path.Combine(
+                    request.CcSwitchConfigSourcePath,
+                    "settings.json"),
+                "{\n"
+                + "  // 注释保留\n"
+                + "  \"codexConfigDir\": \"E:\\\\Old\\\\.codex\",\n"
+                + "  \"providerSecrets\": \"sk-x\"\n"
+                + "}\n");
+            var codexLink = Path.Combine(root, "links", "Codex");
+            var ccLink = Path.Combine(root, "links", "com.ccswitch.desktop");
+            var shortcutPath = Path.Combine(root, "ChatGPT.lnk");
+            var requestWithRewiring = request with
+            {
+                CompatibilityJunctions =
+                [
+                    new CoordinatedJunctionTarget(
+                        codexLink,
+                        request.CodexConfigDestinationPath),
+                    new CoordinatedJunctionTarget(
+                        ccLink,
+                        Path.Combine(
+                            request.CcSwitchConfigDestinationPath,
+                            "appdata"))
+                ],
+                StartupTargets = new CoordinatedStartupTargets(
+                    @"D:\Software\CCSwitch\cc-switch.exe",
+                    @"E:\Codex\app\ChatGPT.exe"),
+                ChatGptShortcut = new CoordinatedShortcutTarget(
+                    shortcutPath,
+                    @"E:\Codex\app\ChatGPT.exe",
+                    @"E:\Codex\app")
+            };
+            var store = new RecordingUserEnvironmentVariableStore(
+                new Dictionary<string, string?>
+                {
+                    ["CODEX_HOME"] = @"E:\Old\.codex"
+                });
+            var journal = new RecordingOperationJournal();
+            var link = new RecordingActivationLink();
+            await link.SetTargetAsync(codexLink, @"E:\Old\.codex");
+            await link.SetTargetAsync(ccLink, @"E:\Old\.cc-switch");
+            var startup = new RecordingStartupProbe();
+            var shortcutEditor = new RecordingShortcutEditor(
+                new ShortcutState(
+                    @"E:\Old\app\ChatGPT.exe",
+                    @"E:\Old\app"));
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                journal,
+                store,
+                link,
+                startup,
+                new RecordingHealthProbe(isHealthy: true),
+                shortcutEditor);
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                requestWithRewiring);
+            Assert.True(preview.CanApply);
+            var result = await manager.ApplyCoordinatedMigrationAsync(
+                preview);
+
+            // 迁移结果与操作记录
+            Assert.Equal(OperationState.Succeeded, result.Operation.State);
+            Assert.Equal(2, result.QuarantinedSourceIds.Count);
+            Assert.False(Directory.Exists(request.CodexConfigSourcePath));
+            Assert.False(Directory.Exists(request.CcSwitchConfigSourcePath));
+
+            // 配置内容：路径改写且注释/未知字段/provider 内容保留
+            var config = await File.ReadAllTextAsync(Path.Combine(
+                request.CodexConfigDestinationPath,
+                "config.toml"));
+            Assert.Contains("注释保留", config);
+            Assert.Contains("keep-me", config);
+            Assert.Contains(
+                request.CodexConfigDestinationPath.Replace("\\", "\\\\"),
+                config);
+            var settings = await File.ReadAllTextAsync(Path.Combine(
+                request.CcSwitchConfigDestinationPath,
+                "settings.json"));
+            Assert.Contains("sk-x", settings);
+            Assert.Contains(
+                request.CodexConfigDestinationPath.Replace("\\", "\\\\"),
+                settings);
+
+            // 环境变量、Junction、快捷方式与启动顺序
+            Assert.Equal(
+                request.CodexConfigDestinationPath,
+                await store.GetAsync("CODEX_HOME"));
+            Assert.Equal(
+                link.GetActivationTarget(
+                    request.CodexConfigDestinationPath),
+                await link.GetTargetAsync(codexLink));
+            Assert.Equal(
+                @"E:\Codex\app\ChatGPT.exe",
+                shortcutEditor.WriteCalls[0].TargetPath);
+            Assert.Equal(
+                [
+                    @"D:\Software\CCSwitch\cc-switch.exe",
+                    @"E:\Codex\app\ChatGPT.exe"
+                ],
+                startup.StartedPaths);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PreviewAsync_plans_copy_verify_rewrites_and_startup_order()
     {
         var root = CreateTempRoot();
