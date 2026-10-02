@@ -72,6 +72,36 @@ public sealed class CoordinatedMigrationTests
     }
 
     [Fact]
+    public async Task PreviewAsync_blocks_when_startup_targets_are_missing()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                targetsProvider: new StubTargetsProvider
+                {
+                    ReturnStartupTargets = false
+                });
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                CreateRequest(root));
+
+            Assert.False(preview.CanApply);
+            Assert.Contains(
+                preview.Blockers,
+                blocker => blocker.Code == "startup-targets-missing");
+            Assert.Null(preview.OperationId);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PreviewAsync_derives_standard_junctions_when_not_provided()
     {
         var root = CreateTempRoot();
@@ -720,7 +750,8 @@ public sealed class CoordinatedMigrationTests
         ICoordinatedHealthProbe? healthProbe = null,
         IShortcutEditor? shortcutEditor = null,
         IMigrationSourceQuarantineStore? sourceQuarantine = null,
-        Func<Environment.SpecialFolder, string>? environmentFolderPath = null)
+        Func<Environment.SpecialFolder, string>? environmentFolderPath = null,
+        ICoordinatedTargetsProvider? targetsProvider = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
@@ -732,22 +763,35 @@ public sealed class CoordinatedMigrationTests
                 Path.Combine(root, "data")),
             coordinatedMigration: new CoordinatedMigrationWiring(
                 processProbe,
-                startupProbe ?? new WindowsProcessStartupProbe(),
+                startupProbe ?? new RecordingStartupProbe(),
                 shortcutEditor ?? new WindowsShortcutEditor(),
                 sourceQuarantine
                     ?? new FileSystemMigrationSourceQuarantine(
                         Path.Combine(root, "quarantine")),
-                new StubTargetsProvider(),
-                healthProbe,
+                targetsProvider ?? new StubTargetsProvider(),
+                healthProbe ?? new RecordingHealthProbe(isHealthy: true),
                 environmentFolderPath));
     }
 
     private sealed class StubTargetsProvider : ICoordinatedTargetsProvider
     {
+        public bool ReturnStartupTargets { get; init; } = true;
+
         public Task<CoordinatedShortcutTarget?> ResolveChatGptShortcutAsync(
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<CoordinatedShortcutTarget?>(null);
+        }
+
+        public Task<CoordinatedStartupTargets?> ResolveStartupTargetsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<CoordinatedStartupTargets?>(
+                ReturnStartupTargets
+                    ? new CoordinatedStartupTargets(
+                        @"D:\Software\CCSwitch\cc-switch.exe",
+                        @"E:\Codex\app\ChatGPT.exe")
+                    : null);
         }
     }
 
@@ -795,6 +839,7 @@ public sealed class CoordinatedMigrationTests
         public int Calls { get; private set; }
 
         public Task<AgentHealthCheckResult> CheckAsync(
+            string codexConfigDirectory,
             CancellationToken cancellationToken = default)
         {
             Calls++;

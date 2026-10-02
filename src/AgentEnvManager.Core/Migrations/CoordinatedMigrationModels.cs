@@ -75,12 +75,16 @@ public interface ICoordinatedStartupProbe
 public interface ICoordinatedHealthProbe
 {
     Task<Agents.AgentHealthCheckResult> CheckAsync(
+        string codexConfigDirectory,
         CancellationToken cancellationToken = default);
 }
 
 public interface ICoordinatedTargetsProvider
 {
     Task<CoordinatedShortcutTarget?> ResolveChatGptShortcutAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<CoordinatedStartupTargets?> ResolveStartupTargetsAsync(
         CancellationToken cancellationToken = default);
 }
 

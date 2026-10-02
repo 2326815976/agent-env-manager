@@ -240,7 +240,9 @@ public sealed class EnvironmentManager
                 new WindowsShortcutEditor(),
                 new FileSystemMigrationSourceQuarantine(
                     resolvedManagerPaths.QuarantineDirectory),
-                new WindowsCoordinatedTargetsProvider());
+                new WindowsCoordinatedTargetsProvider(),
+                new WindowsLauncherScriptHealthProbe(
+                    new SystemAgentProcessRunner()));
         _coordinatedMigration = new CoordinatedMigrationService(
             migrationWiring.ProcessControl,
             userEnvironmentVariableStore

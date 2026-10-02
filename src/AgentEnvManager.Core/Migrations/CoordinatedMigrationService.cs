@@ -162,6 +162,17 @@ internal sealed class CoordinatedMigrationService(
         var chatGptShortcut = request.ChatGptShortcut
             ?? await targetsProvider.ResolveChatGptShortcutAsync(
                 cancellationToken);
+        var startupTargets = request.StartupTargets
+            ?? await targetsProvider.ResolveStartupTargetsAsync(
+                cancellationToken);
+        if (startupTargets is null)
+        {
+            blockers.Add(new CoordinatedMigrationBlocker(
+                "startup-targets-missing",
+                "未发现 ChatGPT 或 CC Switch 可执行文件，" +
+                "无法验证迁移后的启动链。"));
+        }
+
         var impact = string.Join(
             "；",
             targets.Select(target =>
@@ -176,7 +187,7 @@ internal sealed class CoordinatedMigrationService(
                 PlannedRewrites,
                 StartupOrder,
                 junctions,
-                request.StartupTargets,
+                startupTargets,
                 chatGptShortcut,
                 blockers,
                 impact);
@@ -201,7 +212,7 @@ internal sealed class CoordinatedMigrationService(
             PlannedRewrites,
             StartupOrder,
             junctions,
-            request.StartupTargets,
+            startupTargets,
             chatGptShortcut,
             blockers,
             impact,
@@ -461,7 +472,9 @@ internal sealed class CoordinatedMigrationService(
                 await startupProbe.StartAsync(
                     preview.StartupTargets.ChatGptExecutablePath,
                     cancellationToken);
-                var health = await healthProbe.CheckAsync(cancellationToken);
+                var health = await healthProbe.CheckAsync(
+                    codexTarget.DestinationPath,
+                    cancellationToken);
                 if (!health.IsHealthy)
                 {
                     throw new InvalidOperationException(
