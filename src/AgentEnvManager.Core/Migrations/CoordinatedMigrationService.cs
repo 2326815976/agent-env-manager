@@ -15,6 +15,7 @@ internal sealed class CoordinatedMigrationService(
     ICoordinatedHealthProbe? healthProbe,
     IShortcutEditor shortcutEditor,
     IMigrationSourceQuarantineStore sourceQuarantine,
+    ICoordinatedTargetsProvider targetsProvider,
     IOperationJournal operationJournal,
     TimeProvider timeProvider,
     Func<Environment.SpecialFolder, string>? getFolderPath = null)
@@ -158,6 +159,9 @@ internal sealed class CoordinatedMigrationService(
                 : DeriveStandardJunctions(
                     codexTarget.DestinationPath,
                     ccSwitchTarget.DestinationPath));
+        var chatGptShortcut = request.ChatGptShortcut
+            ?? await targetsProvider.ResolveChatGptShortcutAsync(
+                cancellationToken);
         var impact = string.Join(
             "；",
             targets.Select(target =>
@@ -173,7 +177,7 @@ internal sealed class CoordinatedMigrationService(
                 StartupOrder,
                 junctions,
                 request.StartupTargets,
-                request.ChatGptShortcut,
+                chatGptShortcut,
                 blockers,
                 impact);
         }
@@ -198,7 +202,7 @@ internal sealed class CoordinatedMigrationService(
             StartupOrder,
             junctions,
             request.StartupTargets,
-            request.ChatGptShortcut,
+            chatGptShortcut,
             blockers,
             impact,
             operation.Id);

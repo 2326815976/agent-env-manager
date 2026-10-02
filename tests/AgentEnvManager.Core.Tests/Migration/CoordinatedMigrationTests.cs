@@ -727,17 +727,28 @@ public sealed class CoordinatedMigrationTests
             operationJournal: journal,
             userEnvironmentVariableStore: userEnvironmentVariableStore,
             activationLink: link,
-            coordinatedStartupProbe: startupProbe,
-            coordinatedHealthProbe: healthProbe,
-            shortcutEditor: shortcutEditor,
-            migrationSourceQuarantine: sourceQuarantine
-                ?? new FileSystemMigrationSourceQuarantine(
-                    Path.Combine(root, "quarantine")),
-            environmentFolderPath: environmentFolderPath,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),
-            processControlProbe: processProbe);
+            coordinatedMigration: new CoordinatedMigrationWiring(
+                processProbe,
+                startupProbe ?? new WindowsProcessStartupProbe(),
+                shortcutEditor ?? new WindowsShortcutEditor(),
+                sourceQuarantine
+                    ?? new FileSystemMigrationSourceQuarantine(
+                        Path.Combine(root, "quarantine")),
+                new StubTargetsProvider(),
+                healthProbe,
+                environmentFolderPath));
+    }
+
+    private sealed class StubTargetsProvider : ICoordinatedTargetsProvider
+    {
+        public Task<CoordinatedShortcutTarget?> ResolveChatGptShortcutAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<CoordinatedShortcutTarget?>(null);
+        }
     }
 
     private sealed class RecordingStartupProbe : ICoordinatedStartupProbe

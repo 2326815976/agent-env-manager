@@ -78,6 +78,21 @@ public interface ICoordinatedHealthProbe
         CancellationToken cancellationToken = default);
 }
 
+public interface ICoordinatedTargetsProvider
+{
+    Task<CoordinatedShortcutTarget?> ResolveChatGptShortcutAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record CoordinatedMigrationWiring(
+    IProcessControlProbe ProcessControl,
+    ICoordinatedStartupProbe Startup,
+    IShortcutEditor ShortcutEditor,
+    IMigrationSourceQuarantineStore SourceQuarantine,
+    ICoordinatedTargetsProvider TargetsProvider,
+    ICoordinatedHealthProbe? Health = null,
+    Func<Environment.SpecialFolder, string>? EnvironmentFolderPath = null);
+
 public sealed record CoordinatedMigrationResult(
     Operations.OperationRecord Operation,
     IReadOnlyList<string> MigratedPaths,

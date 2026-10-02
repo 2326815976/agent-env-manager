@@ -71,12 +71,7 @@ public sealed class EnvironmentManager
         IDiagnosticPackageService? diagnosticPackageService = null,
         IAgentConfigurationBackupStore? agentConfigurationBackupStore = null,
         Func<string, bool>? isReparsePoint = null,
-        IProcessControlProbe? processControlProbe = null,
-        ICoordinatedStartupProbe? coordinatedStartupProbe = null,
-        ICoordinatedHealthProbe? coordinatedHealthProbe = null,
-        IShortcutEditor? shortcutEditor = null,
-        IMigrationSourceQuarantineStore? migrationSourceQuarantine = null,
-        Func<Environment.SpecialFolder, string>? environmentFolderPath = null)
+        CoordinatedMigrationWiring? coordinatedMigration = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -238,20 +233,27 @@ public sealed class EnvironmentManager
             journal,
             clock,
             isReparsePoint: isReparsePoint);
+        var migrationWiring = coordinatedMigration
+            ?? new CoordinatedMigrationWiring(
+                new WindowsProcessControlProbe(),
+                new WindowsProcessStartupProbe(),
+                new WindowsShortcutEditor(),
+                new FileSystemMigrationSourceQuarantine(
+                    resolvedManagerPaths.QuarantineDirectory),
+                new WindowsCoordinatedTargetsProvider());
         _coordinatedMigration = new CoordinatedMigrationService(
-            processControlProbe ?? new WindowsProcessControlProbe(),
+            migrationWiring.ProcessControl,
             userEnvironmentVariableStore
                 ?? new WindowsUserEnvironmentVariableStore(),
             activationLink ?? new WindowsJunctionActivationLink(),
-            coordinatedStartupProbe ?? new WindowsProcessStartupProbe(),
-            coordinatedHealthProbe,
-            shortcutEditor ?? new WindowsShortcutEditor(),
-            migrationSourceQuarantine
-                ?? new FileSystemMigrationSourceQuarantine(
-                    resolvedManagerPaths.QuarantineDirectory),
+            migrationWiring.Startup,
+            migrationWiring.Health,
+            migrationWiring.ShortcutEditor,
+            migrationWiring.SourceQuarantine,
+            migrationWiring.TargetsProvider,
             journal,
             clock,
-            environmentFolderPath);
+            migrationWiring.EnvironmentFolderPath);
     }
 
     public Task<CoordinatedMigrationPreview>
