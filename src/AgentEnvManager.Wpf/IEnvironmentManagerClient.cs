@@ -90,6 +90,22 @@ public interface IAgentDiscoveryClient
         CancellationToken cancellationToken = default);
 }
 
+public interface ICcSwitchClient
+{
+    Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default);
+
+    Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+        string configRoot,
+        string targetCodexConfigDirectory,
+        CancellationToken cancellationToken = default);
+
+    Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+        CcSwitchBindingPreview preview,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IAgentBindingClient
 {
     Task<AgentBindingPlan> CreateAgentBindingPlanAsync(
@@ -169,6 +185,7 @@ public interface IEnvironmentManagerClient
       IEnvironmentVariablesClient,
       IMigrationClient,
       IAgentDiscoveryClient,
+      ICcSwitchClient,
       IAgentBindingClient,
       IOperationJournalClient,
       IEnvironmentDeletionClient

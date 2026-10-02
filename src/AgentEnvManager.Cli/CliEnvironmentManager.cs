@@ -106,6 +106,19 @@ internal interface ICliEnvironmentManager
         ApplyEnvironmentVariableUpdateAsync(
             EnvironmentVariableUpdatePreview preview,
             CancellationToken cancellationToken = default);
+
+    Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default);
+
+    Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+        string configRoot,
+        string targetCodexConfigDirectory,
+        CancellationToken cancellationToken = default);
+
+    Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+        CcSwitchBindingPreview preview,
+        CancellationToken cancellationToken = default);
 }
 
 internal sealed class EnvironmentManagerCliAdapter(
@@ -143,6 +156,33 @@ internal sealed class EnvironmentManagerCliAdapter(
             CancellationToken cancellationToken = default)
     {
         return manager.ApplyEnvironmentVariableUpdateAsync(
+            preview,
+            cancellationToken);
+    }
+
+    public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.DiscoverCcSwitchAsync(request, cancellationToken);
+    }
+
+    public Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+        string configRoot,
+        string targetCodexConfigDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.PreviewCcSwitchCodexConfigDirAsync(
+            configRoot,
+            targetCodexConfigDirectory,
+            cancellationToken);
+    }
+
+    public Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+        CcSwitchBindingPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return manager.ApplyCcSwitchCodexConfigDirAsync(
             preview,
             cancellationToken);
     }

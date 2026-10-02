@@ -627,6 +627,69 @@
                     </Grid>
                 </Grid>
             </TabItem>
+            <TabItem Header="CC Switch"
+                     DataContext="{Binding CcSwitch}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,10">
+                        <Button Content="发现 CC Switch"
+                                Command="{Binding LoadCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="预览绑定"
+                                Command="{Binding PreviewCommand}"
+                                Padding="14,6"
+                                Margin="0,0,8,0" />
+                        <Button Content="应用绑定"
+                                Command="{Binding ApplyCommand}"
+                                Padding="14,6"
+                                Margin="0,0,16,0" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#52616B"
+                                   Text="{Binding StatusMessage}" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ExecutableLabel, StringFormat=可执行文件：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding VersionLabel, StringFormat=版本：{0}}" />
+                            <TextBlock Text="{Binding SettingsFilePathLabel, StringFormat=settings.json：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding CodexConfigDirectoryLabel, StringFormat=codexConfigDir：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding JunctionsLabel, StringFormat=WebView 兼容路径：{0}}"
+                                       TextWrapping="Wrap" />
+
+                            <TextBlock Margin="0,12,0,0"
+                                       Text="配置根" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding ConfigRoot, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="目标 Codex 配置环境" />
+                            <TextBox Margin="0,4,0,0"
+                                     Text="{Binding TargetCodexHome, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding PreviewImpact, StringFormat=影响范围：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PreservedContentLabel, StringFormat=保持不变：{0}}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PendingRecoveryPoint, StringFormat=恢复点：{0}}" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding BindingResult}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
             <TabItem Header="诊断包"
                      DataContext="{Binding DiagnosticsPackage}">
                 <Grid Margin="12">

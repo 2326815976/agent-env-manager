@@ -39,6 +39,7 @@ public sealed class EnvironmentManager
     private readonly IGitConfigurationBackupService
         _gitConfigurationBackup;
     private readonly IDiagnosticPackageService _diagnosticPackage;
+    private readonly CcSwitchConfigurationService _ccSwitch;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -66,7 +67,9 @@ public sealed class EnvironmentManager
         string? runtimeRoot = null,
         IGitConfigurationBackupService? gitConfigurationBackupService = null,
         IRuntimeArtifactCache? artifactCache = null,
-        IDiagnosticPackageService? diagnosticPackageService = null)
+        IDiagnosticPackageService? diagnosticPackageService = null,
+        IAgentConfigurationBackupStore? agentConfigurationBackupStore = null,
+        Func<string, bool>? isReparsePoint = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -221,6 +224,38 @@ public sealed class EnvironmentManager
                     resolvedManagerPaths.QuarantineDirectory),
             _runtimeStateCatalog,
             clock);
+        _ccSwitch = new CcSwitchConfigurationService(
+            agentConfigurationBackupStore
+                ?? new FileAgentConfigurationBackupStore(
+                    resolvedManagerPaths.AgentBackupDirectory),
+            journal,
+            clock,
+            isReparsePoint: isReparsePoint);
+    }
+
+    public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _ccSwitch.DiscoverAsync(request, cancellationToken);
+    }
+
+    public Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+        string configRoot,
+        string targetCodexConfigDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        return _ccSwitch.PreviewAsync(
+            configRoot,
+            targetCodexConfigDirectory,
+            cancellationToken);
+    }
+
+    public Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+        CcSwitchBindingPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _ccSwitch.ApplyAsync(preview, cancellationToken);
     }
 
     public Task<InspectionReport> InspectAsync(

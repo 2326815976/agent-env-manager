@@ -38,6 +38,10 @@ public interface IAgentConfigurationBackupStore
         IReadOnlyList<string> sourcePaths,
         CancellationToken cancellationToken = default);
 
+    Task<AgentConfigurationRecoveryPoint?> GetAsync(
+        string recoveryPointId,
+        CancellationToken cancellationToken = default);
+
     Task RestoreAsync(
         AgentConfigurationRecoveryPoint recoveryPoint,
         CancellationToken cancellationToken = default);

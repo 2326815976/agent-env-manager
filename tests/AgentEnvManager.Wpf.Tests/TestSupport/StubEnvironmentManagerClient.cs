@@ -232,6 +232,30 @@ internal class StubEnvironmentManagerClient : IEnvironmentManagerClient
         return [];
     }
 
+    public virtual Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<CcSwitchBindingPreview>
+        PreviewCcSwitchCodexConfigDirAsync(
+            string configRoot,
+            string targetCodexConfigDirectory,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public virtual Task<CcSwitchBindingResult>
+        ApplyCcSwitchCodexConfigDirAsync(
+            CcSwitchBindingPreview preview,
+            CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
     public virtual Task<AgentDiscoveryResult> DiscoverAgentAsync(
         string agentName,
         AgentDiscoveryRequest request,

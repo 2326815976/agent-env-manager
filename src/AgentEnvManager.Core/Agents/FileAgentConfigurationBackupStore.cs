@@ -44,6 +44,34 @@ public sealed class FileAgentConfigurationBackupStore(string backupRoot)
         return point;
     }
 
+    public async Task<AgentConfigurationRecoveryPoint?> GetAsync(
+        string recoveryPointId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(recoveryPointId)
+            || recoveryPointId.Contains(
+                Path.DirectorySeparatorChar)
+            || recoveryPointId.Contains(
+                Path.AltDirectorySeparatorChar)
+            || recoveryPointId.Contains("..", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var pointPath = Path.Combine(
+            backupRoot,
+            recoveryPointId,
+            "recovery-point.json");
+        if (!File.Exists(pointPath))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<AgentConfigurationRecoveryPoint>(
+            await File.ReadAllTextAsync(pointPath, cancellationToken),
+            ManagerJson.Options);
+    }
+
     public async Task RestoreAsync(
         AgentConfigurationRecoveryPoint recoveryPoint,
         CancellationToken cancellationToken = default)

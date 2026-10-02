@@ -187,6 +187,41 @@ public static class CliApplication
                     request.ShowSecrets);
                 return 0;
 
+            case CliAction.CcSwitchInspect:
+                var ccSwitchDiscovery =
+                    await manager.DiscoverCcSwitchAsync(
+                        new CcSwitchDiscoveryRequest(
+                            ConfigRoot: request.ConfigRoot),
+                        cancellationToken);
+                CcSwitchReportRenderer.WriteDiscovery(
+                    ccSwitchDiscovery,
+                    output);
+                return 0;
+
+            case CliAction.CcSwitchBindPreview:
+            case CliAction.CcSwitchBind:
+                var ccSwitchPreview =
+                    await manager.PreviewCcSwitchCodexConfigDirAsync(
+                        request.ConfigRoot!,
+                        request.CodexHome!,
+                        cancellationToken);
+                return await ExecuteConfirmedPlanAsync(
+                    request.Confirmed,
+                    ccSwitchPreview,
+                    (preview, writer) =>
+                        CcSwitchReportRenderer.WritePreview(preview, writer),
+                    async (preview, token) =>
+                    {
+                        var bound =
+                            await manager.ApplyCcSwitchCodexConfigDirAsync(
+                                preview,
+                                token);
+                        CcSwitchReportRenderer.WriteBinding(bound, output);
+                    },
+                    output,
+                    error,
+                    cancellationToken);
+
             case CliAction.EnvironmentVariablesApply:
                 var plannedVariables =
                     await manager.PreviewManagedEnvironmentUpdateAsync(

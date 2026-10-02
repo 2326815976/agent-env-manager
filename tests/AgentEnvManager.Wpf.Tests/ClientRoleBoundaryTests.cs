@@ -21,6 +21,7 @@ public sealed class ClientRoleBoundaryTests
             typeof(IEnvironmentVariablesClient),
             typeof(IMigrationClient),
             typeof(IAgentDiscoveryClient),
+            typeof(ICcSwitchClient),
             typeof(IAgentBindingClient),
             typeof(IOperationJournalClient),
             typeof(IEnvironmentDeletionClient)
@@ -90,6 +91,7 @@ public sealed class ClientRoleBoundaryTests
         var variables = new RoleScopedEnvironmentVariablesClient();
         var migration = new RoleScopedMigrationClient();
         var discovery = new RoleScopedDiscoveryClient();
+        var ccSwitch = new RoleScopedCcSwitchClient();
         var binding = new RoleScopedBindingClient();
         var catalog = new RoleScopedRuntimeCatalogClient();
 
@@ -107,8 +109,10 @@ public sealed class ClientRoleBoundaryTests
             discovery,
             binding,
             catalog);
+        var ccSwitchCenter = new CcSwitchViewModel(ccSwitch);
 
         Assert.NotNull(migrationCenter);
+        Assert.NotNull(ccSwitchCenter);
         Assert.Equal(
             ["ChatGPT", "CC Switch"],
             agentBinding.AvailableAgents);
@@ -239,6 +243,34 @@ public sealed class ClientRoleBoundaryTests
         {
             throw new NotSupportedException(
                 "测试替身未提供 Agent 发现能力。");
+        }
+    }
+
+    private sealed class RoleScopedCcSwitchClient : ICcSwitchClient
+    {
+        public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+            CcSwitchDiscoveryRequest? request = null,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "测试替身未提供 CC Switch 发现能力。");
+        }
+
+        public Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+            string configRoot,
+            string targetCodexConfigDirectory,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "测试替身未提供 CC Switch 绑定预览能力。");
+        }
+
+        public Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+            CcSwitchBindingPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException(
+                "测试替身未提供 CC Switch 绑定能力。");
         }
     }
 

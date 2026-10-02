@@ -274,4 +274,42 @@ internal sealed class FakeCliEnvironmentManager : ICliEnvironmentManager
         VariableApplyCalls++;
         return Task.FromResult(EnvironmentVariableResult);
     }
+
+    public CcSwitchDiscovery CcSwitchDiscovery { get; set; } = null!;
+
+    public CcSwitchBindingPreview CcSwitchBindingPreview { get; set; } = null!;
+
+    public CcSwitchBindingResult CcSwitchBindingResult { get; set; } = null!;
+
+    public int CcSwitchBindCalls { get; private set; }
+
+    public string? LastCcSwitchConfigRoot { get; private set; }
+
+    public string? LastCcSwitchCodexHome { get; private set; }
+
+    public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
+        CcSwitchDiscoveryRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        LastCcSwitchConfigRoot = request?.ConfigRoot;
+        return Task.FromResult(CcSwitchDiscovery);
+    }
+
+    public Task<CcSwitchBindingPreview> PreviewCcSwitchCodexConfigDirAsync(
+        string configRoot,
+        string targetCodexConfigDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        LastCcSwitchConfigRoot = configRoot;
+        LastCcSwitchCodexHome = targetCodexConfigDirectory;
+        return Task.FromResult(CcSwitchBindingPreview);
+    }
+
+    public Task<CcSwitchBindingResult> ApplyCcSwitchCodexConfigDirAsync(
+        CcSwitchBindingPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        CcSwitchBindCalls++;
+        return Task.FromResult(CcSwitchBindingResult);
+    }
 }

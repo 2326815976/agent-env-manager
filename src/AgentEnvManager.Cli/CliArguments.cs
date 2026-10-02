@@ -12,6 +12,9 @@ internal enum CliAction
     DiagnosticsExport,
     EnvironmentVariablesInspect,
     EnvironmentVariablesApply,
+    CcSwitchInspect,
+    CcSwitchBindPreview,
+    CcSwitchBind,
     RuntimeList,
     RuntimeInstallPreview,
     RuntimeInstall,
@@ -40,6 +43,8 @@ internal sealed record CliRequest(
     string? VariableName = null,
     string? VariableValue = null,
     string? ManagedPathEntry = null,
+    string? ConfigRoot = null,
+    string? CodexHome = null,
     bool ShowSecrets = false,
     string? AgentName = null,
     string? ConfigurationDirectory = null,
@@ -104,6 +109,13 @@ internal static class CliArguments
                     DestinationPath: value)),
             "env-vars" => ParseEnvironmentVariablesInspect(args),
             "env-vars-apply" => ParseEnvironmentVariablesApply(args),
+            "cc-switch" => ParseCcSwitchInspect(args),
+            "cc-switch-bind-preview" => ParseCcSwitchBind(
+                args,
+                isPreview: true),
+            "cc-switch-bind" => ParseCcSwitchBind(
+                args,
+                isPreview: false),
             "runtimes" => Exact(args, CliAction.RuntimeList),
             "runtime-install-preview" => ParseRuntimeInstall(
                 args,
@@ -300,6 +312,64 @@ internal static class CliArguments
         return new CliRequest(
             CliAction.EnvironmentVariablesInspect,
             ShowSecrets: showSecrets);
+    }
+
+    private static CliRequest ParseCcSwitchInspect(
+        IReadOnlyList<string> args)
+    {
+        if (!TryParseOptions(
+            args,
+            1,
+            ["--config-root"],
+            allowConfirm: false,
+            out var options,
+            out _,
+            out var error))
+        {
+            return Invalid(error!);
+        }
+
+        return new CliRequest(
+            CliAction.CcSwitchInspect,
+            ConfigRoot: options.GetValueOrDefault("--config-root"));
+    }
+
+    private static CliRequest ParseCcSwitchBind(
+        IReadOnlyList<string> args,
+        bool isPreview)
+    {
+        if (!TryParseOptions(
+            args,
+            1,
+            ["--config-root", "--codex-home"],
+            allowConfirm: !isPreview,
+            out var options,
+            out var confirmed,
+            out var error))
+        {
+            return Invalid(error!);
+        }
+
+        if (!TryGetRequiredOption(
+                options,
+                "--config-root",
+                out var configRoot)
+            || !TryGetRequiredOption(
+                options,
+                "--codex-home",
+                out var codexHome))
+        {
+            return Invalid(
+                $"{args[0]} 需要 --config-root 和 --codex-home。");
+        }
+
+        return new CliRequest(
+            isPreview
+                ? CliAction.CcSwitchBindPreview
+                : CliAction.CcSwitchBind,
+            ConfigRoot: configRoot,
+            CodexHome: codexHome,
+            Confirmed: confirmed);
     }
 
     private static CliRequest ParseRuntimeImport(

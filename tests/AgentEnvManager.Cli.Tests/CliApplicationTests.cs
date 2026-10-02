@@ -12,6 +12,144 @@ namespace AgentEnvManager.Cli.Tests;
 public sealed class CliApplicationTests
 {
     [Fact]
+    public async Task CcSwitch_renders_discovery_result()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            CcSwitchDiscovery = new CcSwitchDiscovery(
+                IsInstalled: true,
+                Executable: @"D:\Software\CCSwitch\cc-switch.exe",
+                Version: "3.20.4",
+                ConfigRoot: @"E:\Codex\.cc-switch",
+                SettingsFilePath: @"E:\Codex\.cc-switch\settings.json",
+                CodexConfigDirectory: @"E:\Codex\.codex",
+                CompatibilityJunctions:
+                    [@"C:\Users\tester\AppData\Local\com.ccswitch.desktop"],
+                Message: "已发现 CC Switch。")
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            ["cc-switch", "--config-root", @"E:\Codex\.cc-switch"],
+            () => manager,
+            output,
+            error);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Equal(@"E:\Codex\.cc-switch", manager.LastCcSwitchConfigRoot);
+        Assert.Contains(
+            @"可执行文件: D:\Software\CCSwitch\cc-switch.exe",
+            text);
+        Assert.Contains("版本: 3.20.4", text);
+        Assert.Contains(@"codexConfigDir: E:\Codex\.codex", text);
+        Assert.Contains("com.ccswitch.desktop", text);
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task CcSwitchBind_without_confirmation_renders_preview_only()
+    {
+        var manager = new FakeCliEnvironmentManager
+        {
+            CcSwitchBindingPreview = CreateCcSwitchPreview()
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "cc-switch-bind",
+                "--config-root",
+                @"E:\Codex\.cc-switch",
+                "--codex-home",
+                @"E:\Codex\.codex"
+            ],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(0, manager.CcSwitchBindCalls);
+        Assert.Contains("CC Switch 绑定预览", output.ToString());
+        Assert.Contains("codexConfigDir", output.ToString());
+        Assert.Contains("保持不变", output.ToString());
+        Assert.Contains("com.ccswitch.desktop", output.ToString());
+        Assert.Contains("--confirm", error.ToString());
+    }
+
+    [Fact]
+    public async Task CcSwitchBind_with_confirmation_applies_preview()
+    {
+        var preview = CreateCcSwitchPreview();
+        var manager = new FakeCliEnvironmentManager
+        {
+            CcSwitchBindingPreview = preview,
+            CcSwitchBindingResult = new CcSwitchBindingResult(
+                new OperationRecord(
+                    "cc-switch-1",
+                    OperationType.AgentBinding,
+                    OperationState.Succeeded,
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch,
+                    "绑定 CC Switch 的 Codex 配置环境"),
+                new AgentConfigurationRecoveryPoint(
+                    "recovery-cc-switch",
+                    "CC Switch",
+                    [],
+                    DateTimeOffset.UnixEpoch),
+                new CcSwitchDiscovery(
+                    IsInstalled: true,
+                    Executable: @"D:\Software\CCSwitch\cc-switch.exe",
+                    Version: "3.20.4",
+                    ConfigRoot: @"E:\Codex\.cc-switch",
+                    SettingsFilePath: @"E:\Codex\.cc-switch\settings.json",
+                    CodexConfigDirectory: @"E:\Codex\.codex",
+                    CompatibilityJunctions: [],
+                    Message: "已发现 CC Switch。"))
+        };
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await CliApplication.RunWithManagerAsync(
+            [
+                "cc-switch-bind",
+                "--config-root",
+                @"E:\Codex\.cc-switch",
+                "--codex-home",
+                @"E:\Codex\.codex",
+                "--confirm"
+            ],
+            () => manager,
+            output,
+            error);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(1, manager.CcSwitchBindCalls);
+        Assert.Equal(@"E:\Codex\.cc-switch", manager.LastCcSwitchConfigRoot);
+        Assert.Equal(@"E:\Codex\.codex", manager.LastCcSwitchCodexHome);
+        Assert.Contains("CC Switch 绑定完成", output.ToString());
+        Assert.Contains("恢复点: recovery-cc-switch", output.ToString());
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    private static CcSwitchBindingPreview CreateCcSwitchPreview()
+    {
+        return new CcSwitchBindingPreview(
+            @"E:\Codex\.cc-switch\settings.json",
+            "codexConfigDir",
+            @"E:\Codex\.codex",
+            @"E:\Codex\.codex",
+            "只改写 settings.json 的 codexConfigDir 字段。",
+            ["未知字段", "注释与格式", "provider 密钥与配置内容"],
+            [@"C:\Users\tester\AppData\Local\com.ccswitch.desktop"],
+            "operation-1",
+            "recovery-1",
+            IsAlreadyBound: true);
+    }
+
+    [Fact]
     public async Task EnvironmentVariables_render_owned_external_and_machine_entries()
     {
         var manager = new FakeCliEnvironmentManager

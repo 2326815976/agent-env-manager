@@ -48,6 +48,9 @@ public sealed class MainViewModel : ObservableObject
             runtimeCatalog: client,
             filePicker: new WindowsFileSystemPicker(),
             refreshOperations: OperationCenter.RefreshAsync);
+        CcSwitch = new CcSwitchViewModel(
+            client,
+            OperationCenter.RefreshAsync);
         ScanCommand = new RelayCommand(
             ScanAsync,
             () => !IsBusy,
@@ -83,6 +86,8 @@ public sealed class MainViewModel : ObservableObject
     public MigrationCenterViewModel MigrationCenter { get; }
 
     public AgentBindingViewModel AgentBinding { get; }
+
+    public CcSwitchViewModel CcSwitch { get; }
 
     public ObservableCollection<PathConflictViewModel> PathConflicts { get; } = [];
 

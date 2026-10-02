@@ -13,6 +13,39 @@ public sealed class CliArgumentsTests
     }
 
     [Fact]
+    public void Parse_cc_switch_captures_config_root_and_codex_home()
+    {
+        var inspect = CliArguments.Parse(
+            ["cc-switch", "--config-root", @"D:\Software\CCSwitch"]);
+        var bind = CliArguments.Parse(
+            [
+                "cc-switch-bind",
+                "--config-root",
+                @"E:\Codex\.cc-switch",
+                "--codex-home",
+                @"E:\Codex\.codex",
+                "--confirm"
+            ]);
+
+        Assert.Equal(CliAction.CcSwitchInspect, inspect.Action);
+        Assert.Equal(@"D:\Software\CCSwitch", inspect.ConfigRoot);
+        Assert.Equal(CliAction.CcSwitchBind, bind.Action);
+        Assert.Equal(@"E:\Codex\.cc-switch", bind.ConfigRoot);
+        Assert.Equal(@"E:\Codex\.codex", bind.CodexHome);
+        Assert.True(bind.Confirmed);
+    }
+
+    [Fact]
+    public void Parse_cc_switch_bind_requires_both_paths()
+    {
+        var request = CliArguments.Parse(
+            ["cc-switch-bind", "--config-root", @"E:\Codex\.cc-switch"]);
+
+        Assert.Equal(CliAction.Invalid, request.Action);
+        Assert.Contains("--codex-home", request.Error!);
+    }
+
+    [Fact]
     public void Parse_env_vars_lists_environment_variables()
     {
         var request = CliArguments.Parse(["env-vars"]);
