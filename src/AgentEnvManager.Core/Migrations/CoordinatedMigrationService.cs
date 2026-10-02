@@ -1,12 +1,19 @@
 using AgentEnvManager.Core.Operations;
+using AgentEnvManager.Core.EnvironmentVariables;
+using AgentEnvManager.Core.Agents;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace AgentEnvManager.Core.Migrations;
 
 internal sealed class CoordinatedMigrationService(
     IProcessControlProbe processProbe,
+    IUserEnvironmentVariableStore userEnvironmentVariableStore,
     IOperationJournal operationJournal,
     TimeProvider timeProvider)
 {
+    private const string CodexHomeVariableName = "CODEX_HOME";
+    private const string CodexConfigDirField = "codexConfigDir";
     internal static readonly MigrationProcessRequirement[] ProcessRequirements =
     [
         new("chatgpt", "ChatGPT", ["ChatGPT"]),
@@ -213,5 +220,294 @@ internal sealed class CoordinatedMigrationService(
     {
         await operationJournal.SaveAsync(operation, cancellationToken);
         return operation;
+    }
+
+    public async Task<CoordinatedMigrationResult> ApplyAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        if (!preview.CanApply)
+        {
+            throw new InvalidOperationException(
+                "迁移计划包含阻断项，无法执行。");
+        }
+
+        if (string.IsNullOrWhiteSpace(preview.OperationId))
+        {
+            throw new InvalidOperationException("迁移计划缺少操作 ID。");
+        }
+
+        var operation = await operationJournal.GetAsync(
+            preview.OperationId,
+            cancellationToken)
+            ?? throw new InvalidOperationException("迁移计划不存在。");
+        if (operation.State != OperationState.Validated)
+        {
+            throw new InvalidOperationException(
+                "迁移计划状态无效或已过期。");
+        }
+
+        var codexTarget = preview.Targets.Single(target =>
+            string.Equals(
+                target.Kind,
+                "codex-config",
+                StringComparison.Ordinal));
+        var settingsFilePath = Path.Combine(
+            preview.Targets.Single(target => string.Equals(
+                target.Kind,
+                "cc-switch-config",
+                StringComparison.Ordinal)).DestinationPath,
+            "settings.json");
+        var previousCodexHome = await userEnvironmentVariableStore.GetAsync(
+            CodexHomeVariableName,
+            cancellationToken);
+        var copiedPaths = new List<string>();
+        var rewritten = new List<string>();
+        string? originalSettings = null;
+        var environmentRewritten = false;
+        // 源目录在本阶段保持不动，恢复点为"原环境变量值 + 原 settings.json
+        // + 未改动的源目录"，在真正执行前登记。
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.MarkRecoveryReady(
+                operation,
+                $"coordinated-migration-{operation.Id}",
+                timeProvider),
+            cancellationToken);
+        operation = await SaveTransitionAsync(
+            OperationStateMachine.BeginExecution(operation, timeProvider),
+            cancellationToken);
+        try
+        {
+            await processProbe.StopProcessesAsync(
+                ProcessRequirements
+                    .SelectMany(requirement => requirement.ProcessNames)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                cancellationToken);
+            foreach (var target in preview.Targets)
+            {
+                // 先登记目标路径，失败时才能清掉半成品副本。
+                copiedPaths.Add(target.DestinationPath);
+                await CopyDirectoryAsync(
+                    target.SourcePath,
+                    target.DestinationPath,
+                    cancellationToken);
+                await VerifyCopyAsync(
+                    target.SourcePath,
+                    target.DestinationPath,
+                    cancellationToken);
+            }
+
+            await userEnvironmentVariableStore.SetAsync(
+                CodexHomeVariableName,
+                codexTarget.DestinationPath,
+                isExpandable: false,
+                cancellationToken);
+            environmentRewritten = true;
+            await userEnvironmentVariableStore.BroadcastAsync(
+                cancellationToken);
+            rewritten.Add(CodexHomeVariableName);
+
+            if (File.Exists(settingsFilePath))
+            {
+                originalSettings = await File.ReadAllTextAsync(
+                    settingsFilePath,
+                    cancellationToken);
+                if (JsonStringFieldEditor.TryReplaceStringValue(
+                        originalSettings,
+                        CodexConfigDirField,
+                        codexTarget.DestinationPath,
+                        out var updated))
+                {
+                    await File.WriteAllTextAsync(
+                        settingsFilePath,
+                        updated,
+                        new UTF8Encoding(
+                            encoderShouldEmitUTF8Identifier: false),
+                        cancellationToken);
+                    rewritten.Add(CodexConfigDirField);
+                }
+            }
+
+            operation = await SaveTransitionAsync(
+                OperationStateMachine.BeginVerification(
+                    operation,
+                    timeProvider),
+                cancellationToken);
+            operation = OperationStateMachine.Complete(
+                operation,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, cancellationToken);
+            return new CoordinatedMigrationResult(
+                operation,
+                copiedPaths,
+                rewritten,
+                SourcesRetained: true);
+        }
+        catch (Exception exception)
+        {
+            var failureReason = exception.Message;
+            var restored = true;
+            try
+            {
+                if (environmentRewritten)
+                {
+                    await userEnvironmentVariableStore.SetAsync(
+                        CodexHomeVariableName,
+                        previousCodexHome,
+                        isExpandable: false,
+                        CancellationToken.None);
+                    await userEnvironmentVariableStore.BroadcastAsync(
+                        CancellationToken.None);
+                }
+
+                if (originalSettings is not null
+                    && File.Exists(settingsFilePath))
+                {
+                    await File.WriteAllTextAsync(
+                        settingsFilePath,
+                        originalSettings,
+                        new UTF8Encoding(
+                            encoderShouldEmitUTF8Identifier: false),
+                        CancellationToken.None);
+                }
+
+                foreach (var path in copiedPaths)
+                {
+                    if (Directory.Exists(path))
+                    {
+                        Directory.Delete(path, recursive: true);
+                    }
+                }
+            }
+            catch (Exception restoreException)
+            {
+                restored = false;
+                failureReason =
+                    $"{failureReason}；恢复原状态失败: " +
+                    restoreException.Message;
+            }
+
+            if (restored)
+            {
+                failureReason = $"{failureReason}；已恢复原状态。";
+            }
+
+            operation = OperationStateMachine.Fail(
+                operation,
+                failureReason,
+                timeProvider);
+            await operationJournal.SaveAsync(operation, CancellationToken.None);
+            if (restored)
+            {
+                operation = OperationStateMachine.Rollback(
+                    operation,
+                    timeProvider);
+                await operationJournal.SaveAsync(
+                    operation,
+                    CancellationToken.None);
+            }
+
+            throw new InvalidOperationException(failureReason, exception);
+        }
+    }
+
+    private static async Task CopyDirectoryAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(destinationPath);
+        foreach (var directory in Directory.EnumerateDirectories(
+                     sourcePath,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.GetAttributes(directory)
+                .HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException(
+                    $"待迁移环境包含链接目录: {directory}");
+            }
+
+            Directory.CreateDirectory(Path.Combine(
+                destinationPath,
+                Path.GetRelativePath(sourcePath, directory)));
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(
+                     sourcePath,
+                     "*",
+                     SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.GetAttributes(filePath)
+                .HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new InvalidOperationException(
+                    $"待迁移环境包含链接文件: {filePath}");
+            }
+
+            await using var source = File.OpenRead(filePath);
+            await using var target = File.Create(Path.Combine(
+                destinationPath,
+                Path.GetRelativePath(sourcePath, filePath)));
+            await source.CopyToAsync(target, cancellationToken);
+        }
+    }
+
+    private static async Task VerifyCopyAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        var sourceFiles = Directory
+            .EnumerateFiles(sourcePath, "*", SearchOption.AllDirectories)
+            .Select(file => Path.GetRelativePath(sourcePath, file))
+            .OrderBy(relative => relative, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var destinationFiles = Directory
+            .EnumerateFiles(
+                destinationPath,
+                "*",
+                SearchOption.AllDirectories)
+            .Select(file => Path.GetRelativePath(destinationPath, file))
+            .OrderBy(relative => relative, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (!sourceFiles.SequenceEqual(
+                destinationFiles,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"复制校验失败：文件清单不一致 ({destinationPath})。");
+        }
+
+        foreach (var relative in sourceFiles)
+        {
+            var sourceHash = await ComputeSha256Async(
+                Path.Combine(sourcePath, relative),
+                cancellationToken);
+            var destinationHash = await ComputeSha256Async(
+                Path.Combine(destinationPath, relative),
+                cancellationToken);
+            if (!string.Equals(
+                    sourceHash,
+                    destinationHash,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"复制校验失败：{relative} 内容不一致。");
+            }
+        }
+    }
+
+    private static async Task<string> ComputeSha256Async(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash);
     }
 }

@@ -40,4 +40,14 @@ public interface IProcessControlProbe
     Task<IReadOnlyList<string>> FindRunningProcessesAsync(
         IReadOnlyList<string> processNames,
         CancellationToken cancellationToken = default);
+
+    Task StopProcessesAsync(
+        IReadOnlyList<string> processNames,
+        CancellationToken cancellationToken = default);
 }
+
+public sealed record CoordinatedMigrationResult(
+    Operations.OperationRecord Operation,
+    IReadOnlyList<string> MigratedPaths,
+    IReadOnlyList<string> RewrittenPaths,
+    bool SourcesRetained);

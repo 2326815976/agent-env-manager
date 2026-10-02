@@ -235,6 +235,8 @@ public sealed class EnvironmentManager
             isReparsePoint: isReparsePoint);
         _coordinatedMigration = new CoordinatedMigrationService(
             processControlProbe ?? new WindowsProcessControlProbe(),
+            userEnvironmentVariableStore
+                ?? new WindowsUserEnvironmentVariableStore(),
             journal,
             clock);
     }
@@ -247,6 +249,13 @@ public sealed class EnvironmentManager
         return _coordinatedMigration.PreviewAsync(
             request,
             cancellationToken);
+    }
+
+    public Task<CoordinatedMigrationResult> ApplyCoordinatedMigrationAsync(
+        CoordinatedMigrationPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        return _coordinatedMigration.ApplyAsync(preview, cancellationToken);
     }
 
     public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(

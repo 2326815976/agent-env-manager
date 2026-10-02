@@ -9,6 +9,115 @@ namespace AgentEnvManager.Core.Tests.Migration;
 public sealed class CoordinatedMigrationTests
 {
     [Fact]
+    public async Task ApplyAsync_copies_verifies_and_rewrites_paths()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            await File.WriteAllTextAsync(
+                Path.Combine(request.CodexConfigSourcePath, "config.toml"),
+                "model = \"gpt\"\n");
+            Directory.CreateDirectory(
+                Path.Combine(request.CcSwitchConfigSourcePath, "appdata"));
+            await File.WriteAllTextAsync(
+                Path.Combine(
+                    request.CcSwitchConfigSourcePath,
+                    "settings.json"),
+                """
+                {
+                  // 注释保留
+                  "codexConfigDir": "E:\\Old\\.codex",
+                  "providerSecrets": "sk-x"
+                }
+                """);
+            var store = new RecordingUserEnvironmentVariableStore(
+                new Dictionary<string, string?>
+                {
+                    ["CODEX_HOME"] = @"E:\Old\.codex"
+                });
+            var journal = new RecordingOperationJournal();
+            var probe = new StubProcessProbe([]);
+            var manager = CreateManager(root, probe, journal, store);
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+
+            var result = await manager.ApplyCoordinatedMigrationAsync(
+                preview);
+
+            Assert.Equal(OperationState.Succeeded, result.Operation.State);
+            Assert.True(result.SourcesRetained);
+            Assert.Single(probe.StopHistory);
+            Assert.True(Directory.Exists(request.CodexConfigSourcePath));
+            Assert.True(Directory.Exists(
+                Path.Combine(
+                    request.CodexConfigDestinationPath,
+                    "config.toml").Replace("config.toml", string.Empty)));
+            Assert.Equal(
+                request.CodexConfigDestinationPath,
+                await store.GetAsync("CODEX_HOME"));
+            var settings = await File.ReadAllTextAsync(Path.Combine(
+                request.CcSwitchConfigDestinationPath,
+                "settings.json"));
+            Assert.Contains("注释保留", settings);
+            Assert.Contains("sk-x", settings);
+            Assert.Contains(
+                request.CodexConfigDestinationPath.Replace("\\", "\\\\"),
+                settings);
+            Assert.Contains("CODEX_HOME", result.RewrittenPaths);
+            Assert.Contains("codexConfigDir", result.RewrittenPaths);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyAsync_restores_environment_and_destinations_on_failure()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            var store = new RecordingUserEnvironmentVariableStore(
+                new Dictionary<string, string?>
+                {
+                    ["CODEX_HOME"] = @"E:\Old\.codex"
+                });
+            var journal = new RecordingOperationJournal();
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                journal,
+                store);
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+            Directory.Delete(request.CcSwitchConfigSourcePath, recursive: true);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.ApplyCoordinatedMigrationAsync(preview));
+
+            Assert.Contains("已恢复原状态", exception.Message);
+            Assert.Equal(@"E:\Old\.codex", await store.GetAsync("CODEX_HOME"));
+            Assert.False(Directory.Exists(
+                request.CodexConfigDestinationPath));
+            Assert.False(Directory.Exists(
+                request.CcSwitchConfigDestinationPath));
+            var operation = journal.History
+                .Where(record => record.Id == preview.OperationId)
+                .GroupBy(record => record.Id)
+                .Select(group => group.Last())
+                .Single();
+            Assert.Equal(OperationState.RolledBack, operation.State);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task PreviewAsync_plans_copy_verify_rewrites_and_startup_order()
     {
         var root = CreateTempRoot();
@@ -216,11 +325,14 @@ public sealed class CoordinatedMigrationTests
     private static EnvironmentManager CreateManager(
         string root,
         IProcessControlProbe processProbe,
-        RecordingOperationJournal journal)
+        RecordingOperationJournal journal,
+        RecordingUserEnvironmentVariableStore? userEnvironmentVariableStore
+            = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
             operationJournal: journal,
+            userEnvironmentVariableStore: userEnvironmentVariableStore,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),
@@ -249,6 +361,16 @@ public sealed class CoordinatedMigrationTests
                         name,
                         StringComparer.OrdinalIgnoreCase))
                     .ToArray());
+        }
+
+        public List<IReadOnlyList<string>> StopHistory { get; } = [];
+
+        public Task StopProcessesAsync(
+            IReadOnlyList<string> processNames,
+            CancellationToken cancellationToken = default)
+        {
+            StopHistory.Add(processNames.ToArray());
+            return Task.CompletedTask;
         }
     }
 
