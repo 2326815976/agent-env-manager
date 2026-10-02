@@ -40,6 +40,7 @@ public sealed class EnvironmentManager
         _gitConfigurationBackup;
     private readonly IDiagnosticPackageService _diagnosticPackage;
     private readonly CcSwitchConfigurationService _ccSwitch;
+    private readonly CoordinatedMigrationService _coordinatedMigration;
 
     public EnvironmentManager(
         IEnvironmentProbe probe,
@@ -69,7 +70,8 @@ public sealed class EnvironmentManager
         IRuntimeArtifactCache? artifactCache = null,
         IDiagnosticPackageService? diagnosticPackageService = null,
         IAgentConfigurationBackupStore? agentConfigurationBackupStore = null,
-        Func<string, bool>? isReparsePoint = null)
+        Func<string, bool>? isReparsePoint = null,
+        IProcessControlProbe? processControlProbe = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -231,6 +233,20 @@ public sealed class EnvironmentManager
             journal,
             clock,
             isReparsePoint: isReparsePoint);
+        _coordinatedMigration = new CoordinatedMigrationService(
+            processControlProbe ?? new WindowsProcessControlProbe(),
+            journal,
+            clock);
+    }
+
+    public Task<CoordinatedMigrationPreview>
+        PreviewCoordinatedMigrationAsync(
+            CoordinatedMigrationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        return _coordinatedMigration.PreviewAsync(
+            request,
+            cancellationToken);
     }
 
     public Task<CcSwitchDiscovery> DiscoverCcSwitchAsync(
