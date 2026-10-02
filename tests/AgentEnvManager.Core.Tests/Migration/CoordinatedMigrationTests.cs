@@ -9,6 +9,115 @@ namespace AgentEnvManager.Core.Tests.Migration;
 public sealed class CoordinatedMigrationTests
 {
     [Fact]
+    public async Task ApplyAsync_rewires_compatibility_junctions()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var codexLink = Path.Combine(root, "links", "Codex");
+            var ccLink = Path.Combine(root, "links", "com.ccswitch.desktop");
+            var request = CreateRequest(root) with
+            {
+                CompatibilityJunctions =
+                [
+                    new CoordinatedJunctionTarget(
+                        codexLink,
+                        Path.Combine(root, "moved", "codex-home")),
+                    new CoordinatedJunctionTarget(
+                        ccLink,
+                        Path.Combine(
+                            root,
+                            "moved",
+                            ".cc-switch",
+                            "appdata",
+                            "Local",
+                            "com.ccswitch.desktop"))
+                ]
+            };
+            var link = new RecordingActivationLink();
+            await link.SetTargetAsync(codexLink, @"E:\Old\.codex");
+            await link.SetTargetAsync(ccLink, @"E:\Old\.cc-switch");
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                link: link);
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+            var result = await manager.ApplyCoordinatedMigrationAsync(
+                preview);
+
+            Assert.Equal(2, preview.JunctionsToRewire.Count);
+            Assert.Equal(
+                [codexLink, ccLink],
+                result.RewiredJunctions);
+            Assert.Equal(
+                link.GetActivationTarget(
+                    Path.Combine(root, "moved", "codex-home")),
+                await link.GetTargetAsync(codexLink));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyAsync_restores_junctions_when_rewiring_fails()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var firstLink = Path.Combine(root, "links", "Codex");
+            var secondLink = Path.Combine(root, "links", "second");
+            var request = CreateRequest(root) with
+            {
+                CompatibilityJunctions =
+                [
+                    new CoordinatedJunctionTarget(
+                        firstLink,
+                        Path.Combine(root, "moved", "codex-home")),
+                    new CoordinatedJunctionTarget(
+                        secondLink,
+                        Path.Combine(root, "moved", ".cc-switch"))
+                ]
+            };
+            var link = new RecordingActivationLink
+            {
+                ThrowBeforeSetNumber = 2
+            };
+            await link.SetTargetAsync(firstLink, @"E:\Old\.codex");
+            var store = new RecordingUserEnvironmentVariableStore(
+                new Dictionary<string, string?>
+                {
+                    ["CODEX_HOME"] = @"E:\Old\.codex"
+                });
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                store,
+                link);
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => manager.ApplyCoordinatedMigrationAsync(preview));
+
+            Assert.Contains("已恢复原状态", exception.Message);
+            Assert.Equal(
+                link.GetActivationTarget(@"E:\Old\.codex"),
+                await link.GetTargetAsync(firstLink));
+            Assert.Equal(@"E:\Old\.codex", await store.GetAsync("CODEX_HOME"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ApplyAsync_copies_verifies_and_rewrites_paths()
     {
         var root = CreateTempRoot();
@@ -327,12 +436,14 @@ public sealed class CoordinatedMigrationTests
         IProcessControlProbe processProbe,
         RecordingOperationJournal journal,
         RecordingUserEnvironmentVariableStore? userEnvironmentVariableStore
-            = null)
+            = null,
+        RecordingActivationLink? link = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
             operationJournal: journal,
             userEnvironmentVariableStore: userEnvironmentVariableStore,
+            activationLink: link,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),

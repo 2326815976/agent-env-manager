@@ -16,17 +16,23 @@ public sealed record CoordinatedMigrationBlocker(
     string Message,
     string? Path = null);
 
+public sealed record CoordinatedJunctionTarget(
+    string LinkPath,
+    string TargetPath);
+
 public sealed record CoordinatedMigrationRequest(
     string CodexConfigSourcePath,
     string CodexConfigDestinationPath,
     string CcSwitchConfigSourcePath,
-    string CcSwitchConfigDestinationPath);
+    string CcSwitchConfigDestinationPath,
+    IReadOnlyList<CoordinatedJunctionTarget>? CompatibilityJunctions = null);
 
 public sealed record CoordinatedMigrationPreview(
     IReadOnlyList<CoordinatedMigrationTarget> Targets,
     IReadOnlyList<MigrationProcessRequirement> ProcessesToStop,
     IReadOnlyList<string> PlannedRewrites,
     IReadOnlyList<string> StartupOrder,
+    IReadOnlyList<CoordinatedJunctionTarget> JunctionsToRewire,
     IReadOnlyList<CoordinatedMigrationBlocker> Blockers,
     string Impact,
     string? OperationId = null,
@@ -50,4 +56,5 @@ public sealed record CoordinatedMigrationResult(
     Operations.OperationRecord Operation,
     IReadOnlyList<string> MigratedPaths,
     IReadOnlyList<string> RewrittenPaths,
+    IReadOnlyList<string> RewiredJunctions,
     bool SourcesRetained);

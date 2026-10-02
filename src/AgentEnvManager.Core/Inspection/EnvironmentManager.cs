@@ -237,6 +237,7 @@ public sealed class EnvironmentManager
             processControlProbe ?? new WindowsProcessControlProbe(),
             userEnvironmentVariableStore
                 ?? new WindowsUserEnvironmentVariableStore(),
+            activationLink ?? new WindowsJunctionActivationLink(),
             journal,
             clock);
     }

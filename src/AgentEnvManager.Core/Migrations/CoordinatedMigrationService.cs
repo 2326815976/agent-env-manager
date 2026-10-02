@@ -1,6 +1,7 @@
 using AgentEnvManager.Core.Operations;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Agents;
+using AgentEnvManager.Core.Activation;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -9,6 +10,7 @@ namespace AgentEnvManager.Core.Migrations;
 internal sealed class CoordinatedMigrationService(
     IProcessControlProbe processProbe,
     IUserEnvironmentVariableStore userEnvironmentVariableStore,
+    IEnvironmentActivationLink activationLink,
     IOperationJournal operationJournal,
     TimeProvider timeProvider)
 {
@@ -146,6 +148,7 @@ internal sealed class CoordinatedMigrationService(
                 ProcessRequirements,
                 PlannedRewrites,
                 StartupOrder,
+                request.CompatibilityJunctions ?? [],
                 blockers,
                 impact);
         }
@@ -168,6 +171,7 @@ internal sealed class CoordinatedMigrationService(
             ProcessRequirements,
             PlannedRewrites,
             StartupOrder,
+            request.CompatibilityJunctions ?? [],
             blockers,
             impact,
             operation.Id);
@@ -263,6 +267,8 @@ internal sealed class CoordinatedMigrationService(
             cancellationToken);
         var copiedPaths = new List<string>();
         var rewritten = new List<string>();
+        var rewiredJunctions = new List<string>();
+        var previousJunctions = new List<(string Link, string? Target)>();
         string? originalSettings = null;
         var environmentRewritten = false;
         // 源目录在本阶段保持不动，恢复点为"原环境变量值 + 原 settings.json
@@ -329,6 +335,20 @@ internal sealed class CoordinatedMigrationService(
                 }
             }
 
+            foreach (var junction in preview.JunctionsToRewire)
+            {
+                previousJunctions.Add((
+                    junction.LinkPath,
+                    await activationLink.GetTargetAsync(
+                        junction.LinkPath,
+                        cancellationToken)));
+                await activationLink.SetTargetAsync(
+                    junction.LinkPath,
+                    junction.TargetPath,
+                    cancellationToken);
+                rewiredJunctions.Add(junction.LinkPath);
+            }
+
             operation = await SaveTransitionAsync(
                 OperationStateMachine.BeginVerification(
                     operation,
@@ -342,6 +362,7 @@ internal sealed class CoordinatedMigrationService(
                 operation,
                 copiedPaths,
                 rewritten,
+                rewiredJunctions,
                 SourcesRetained: true);
         }
         catch (Exception exception)
@@ -369,6 +390,22 @@ internal sealed class CoordinatedMigrationService(
                         originalSettings,
                         new UTF8Encoding(
                             encoderShouldEmitUTF8Identifier: false),
+                        CancellationToken.None);
+                }
+
+                foreach (var (link, previousTarget) in previousJunctions)
+                {
+                    if (string.IsNullOrWhiteSpace(previousTarget))
+                    {
+                        await activationLink.DeleteAsync(
+                            link,
+                            CancellationToken.None);
+                        continue;
+                    }
+
+                    await activationLink.SetTargetAsync(
+                        link,
+                        previousTarget,
                         CancellationToken.None);
                 }
 
