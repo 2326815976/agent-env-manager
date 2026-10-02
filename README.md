@@ -146,7 +146,11 @@ AGENT_ENV_MANAGER_DATA_ROOT
 ```powershell
 dotnet test AgentEnvManager.sln -c Release
 dotnet format AgentEnvManager.sln --verify-no-changes
+dotnet list AgentEnvManager.sln package --vulnerable --include-transitive
 pwsh -NoProfile -File .\scripts\publish.ps1 -Version verify -OutputRoot .\artifacts
 pwsh -NoProfile -File .\scripts\verify-lifecycle.ps1
 .\artifacts\cli\AgentEnvManager.Cli.exe inspect
+.\artifacts\cli\AgentEnvManager.Cli.exe runtimes
 ```
+
+第一版边界与已知限制见 `docs/user-guide.txt` 的“第一版范围与限制”一节。

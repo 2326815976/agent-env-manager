@@ -5,6 +5,17 @@ AgentEnvManager 使用说明
 --------
 Windows 11 x64。程序为自包含发布，不要求预装 .NET。
 
+第一版范围与限制
+----------------
+- 依赖卡片：Python、Node.js、Git、PowerShell 7、uv、npm、pnpm、ripgrep、
+  GitHub CLI；Conda 与 winget 仅观测，不参与安装与切换。
+- Agent 范围：ChatGPT Desktop 与 CC Switch。Codex 作为 ChatGPT 内置的
+  工具调用组件处理，不作为独立 Agent 目标。
+- 机器级环境变量只读；第一版不提供提权流程。
+- 协同迁移（ChatGPT/Codex 配置环境 + CC Switch 配置环境一起迁移，
+  含 Junction 重接线与全量回滚）尚未提供执行路径，目前只有迁移计划与
+  预检。已纳管环境的单目标迁移不受影响。
+
 启动软件
 --------
 1. 双击 app\AgentEnvManager.Wpf.exe 启动图形界面。
@@ -32,10 +43,15 @@ Windows 11 x64。程序为自包含发布，不要求预装 .NET。
 环境变量管理
 ------------
 1. 打开“环境变量”，点击“加载环境变量”。
-2. 勾选需要写入用户 PATH 的已纳管入口。
-3. 只可编辑以 AGENT_ENV_MANAGER_ 开头的管理器变量。
-4. 点击“预览变更”，确认影响范围后点击“应用变更”。
-5. 应用前会创建恢复点；用户手改的 PATH 条目和无关变量不会被覆盖。
+2. 可直接编辑的只有管理器拥有的条目：已纳管入口，以及以
+   AGENT_ENV_MANAGER_ 开头的变量。
+3. 其他用户变量、机器级变量与外部 PATH 条目为只读；机器级变量在第一版
+   不提供写入入口。
+4. 勾选需要写入用户 PATH 的已纳管入口。
+5. 点击“预览变更”，确认影响范围后点击“应用变更”。
+6. 应用前会创建恢复点；用户手改的 PATH 条目和无关变量不会被覆盖。
+7. 需要撤销时，在“操作中心”对已完成的环境变量事务执行回滚，原值会从
+   恢复点恢复。
 
 迁移与回滚
 ----------
@@ -55,6 +71,18 @@ Agent 绑定
 5. 点击“执行绑定”，然后点击“健康检查”。
 6. 健康检查失败时，页面会显示是否已恢复原绑定。
 
+CC Switch
+---------
+1. 打开“CC Switch”标签页，点击“发现 CC Switch”。
+2. 页面显示可执行文件、版本、配置根、settings.json、当前 codexConfigDir
+   以及 WebView 兼容路径（%LOCALAPPDATA%\com.ccswitch.desktop、
+   %APPDATA%\com.ccswitch.desktop）。
+3. 填写目标 Codex 配置环境，点击“预览绑定”。
+4. 预览只显示将要修改的 codexConfigDir、保持不变的内容、兼容路径和
+   恢复点，不显示 provider 密钥或完整配置内容。
+5. 点击“应用绑定”。写入采用字段级替换，settings.json 中的注释、未知
+   字段与 provider 内容保持原样；失败时会从恢复点还原。
+
 诊断包
 ------
 1. 打开“诊断包”，点击“生成预览”。
@@ -65,9 +93,14 @@ Agent 绑定
 命令行常用操作
 --------------
 runtimes
+runtime-install <provider> <version> --confirm
 runtime-install-preview <provider> <version> [--mirror <url>] [--install-dir <path>]
-runtime-install <provider> <version> [--mirror <url>] [--install-dir <path>] --confirm
 runtime-import <provider> <version> <artifact-path> --confirm
+env-vars [--show-secrets]
+env-vars-apply [--set NAME=VALUE] [--managed-path <path>] --confirm
+cc-switch [--config-root <path>]
+cc-switch-bind-preview --config-root <path> --codex-home <path>
+cc-switch-bind --config-root <path> --codex-home <path> --confirm
 migrate-preview <fingerprint> <destination>
 migrate <fingerprint> <destination> --confirm
 rollback-preview <operation-id>
@@ -102,5 +135,19 @@ AGENT_ENV_MANAGER_DATA_ROOT
 --------
 1. 操作失败时先查看页面状态提示和“操作中心”失败原因。
 2. 网络安装失败时检查网络、代理或改用镜像/离线制品。
-3. 可生成诊断包后人工审阅，再用于排查问题。
-4. 重要环境在迁移或删除前先确认存在有效恢复点。
+3. env-vars 默认掩码显示变量值，需要查看真值时显式加 --show-secrets；
+   在终端或流水线中打印前请确认其中不含令牌。
+4. Agent 无法调用工具时，先确认 ChatGPT 的 CODEX_HOME 指向真实配置环境，
+   并检查 %APPDATA%\Codex 与 %LOCALAPPDATA%\Codex 兼容 Junction 是否存在。
+5. CC Switch 绑定前请确认其进程已停止，避免运行中的实例覆盖 settings.json。
+6. 可生成诊断包后人工审阅，再用于排查问题。
+7. 重要环境在迁移或删除前先确认存在有效恢复点。
+
+恢复点
+------
+- 运行时安装/切换、环境变量事务、纳管、迁移、删除与 Agent 绑定都会在
+  写操作前记录恢复点。
+- 恢复点保存在管理器状态目录（%LOCALAPPDATA%\AgentEnvManager\recovery
+  及 recovery\environment-variables），默认卸载不会删除它们。
+- 操作中心可对失败的迁移/安装/绑定，以及已完成的环境变量事务与迁移
+  执行回滚。
