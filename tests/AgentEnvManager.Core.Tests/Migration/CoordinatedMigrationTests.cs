@@ -72,6 +72,57 @@ public sealed class CoordinatedMigrationTests
     }
 
     [Fact]
+    public async Task PreviewAsync_derives_standard_junctions_when_not_provided()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var request = CreateRequest(root);
+            var manager = CreateManager(
+                root,
+                new StubProcessProbe([]),
+                new RecordingOperationJournal(),
+                environmentFolderPath: folder => folder switch
+                {
+                    Environment.SpecialFolder.ApplicationData =>
+                        Path.Combine(root, "roaming"),
+                    Environment.SpecialFolder.LocalApplicationData =>
+                        Path.Combine(root, "local"),
+                    _ => root
+                });
+
+            var preview = await manager.PreviewCoordinatedMigrationAsync(
+                request);
+
+            Assert.Equal(4, preview.JunctionsToRewire.Count);
+            Assert.Contains(
+                preview.JunctionsToRewire,
+                junction => junction.LinkPath == Path.Combine(
+                    root,
+                    "roaming",
+                    "Codex")
+                    && junction.TargetPath
+                        == request.CodexConfigDestinationPath);
+            Assert.Contains(
+                preview.JunctionsToRewire,
+                junction => junction.LinkPath == Path.Combine(
+                    root,
+                    "local",
+                    "com.ccswitch.desktop")
+                    && junction.TargetPath.EndsWith(
+                        Path.Combine(
+                            "appdata",
+                            "Local",
+                            "com.ccswitch.desktop"),
+                        StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ApplyAsync_restores_quarantined_source_when_later_quarantine_fails()
     {
         var root = CreateTempRoot();
@@ -668,7 +719,8 @@ public sealed class CoordinatedMigrationTests
         ICoordinatedStartupProbe? startupProbe = null,
         ICoordinatedHealthProbe? healthProbe = null,
         IShortcutEditor? shortcutEditor = null,
-        IMigrationSourceQuarantineStore? sourceQuarantine = null)
+        IMigrationSourceQuarantineStore? sourceQuarantine = null,
+        Func<Environment.SpecialFolder, string>? environmentFolderPath = null)
     {
         return new EnvironmentManager(
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
@@ -681,6 +733,7 @@ public sealed class CoordinatedMigrationTests
             migrationSourceQuarantine: sourceQuarantine
                 ?? new FileSystemMigrationSourceQuarantine(
                     Path.Combine(root, "quarantine")),
+            environmentFolderPath: environmentFolderPath,
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),

@@ -16,10 +16,13 @@ internal sealed class CoordinatedMigrationService(
     IShortcutEditor shortcutEditor,
     IMigrationSourceQuarantineStore sourceQuarantine,
     IOperationJournal operationJournal,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    Func<Environment.SpecialFolder, string>? getFolderPath = null)
 {
     private const string CodexHomeVariableName = "CODEX_HOME";
     private const string CodexConfigDirField = "codexConfigDir";
+    private readonly Func<Environment.SpecialFolder, string> _getFolderPath =
+        getFolderPath ?? Environment.GetFolderPath;
     internal static readonly MigrationProcessRequirement[] ProcessRequirements =
     [
         new("chatgpt", "ChatGPT", ["ChatGPT"]),
@@ -139,6 +142,22 @@ internal sealed class CoordinatedMigrationService(
                 $"迁移前必须停止相关进程: {string.Join("、", running)}。"));
         }
 
+        var ccSwitchTarget = targets.FirstOrDefault(target =>
+            string.Equals(
+                target.Kind,
+                "cc-switch-config",
+                StringComparison.Ordinal));
+        var codexTarget = targets.FirstOrDefault(target =>
+            string.Equals(
+                target.Kind,
+                "codex-config",
+                StringComparison.Ordinal));
+        var junctions = request.CompatibilityJunctions
+            ?? (ccSwitchTarget is null || codexTarget is null
+                ? []
+                : DeriveStandardJunctions(
+                    codexTarget.DestinationPath,
+                    ccSwitchTarget.DestinationPath));
         var impact = string.Join(
             "；",
             targets.Select(target =>
@@ -152,7 +171,7 @@ internal sealed class CoordinatedMigrationService(
                 ProcessRequirements,
                 PlannedRewrites,
                 StartupOrder,
-                request.CompatibilityJunctions ?? [],
+                junctions,
                 request.StartupTargets,
                 request.ChatGptShortcut,
                 blockers,
@@ -177,7 +196,7 @@ internal sealed class CoordinatedMigrationService(
             ProcessRequirements,
             PlannedRewrites,
             StartupOrder,
-            request.CompatibilityJunctions ?? [],
+            junctions,
             request.StartupTargets,
             request.ChatGptShortcut,
             blockers,
@@ -224,6 +243,41 @@ internal sealed class CoordinatedMigrationService(
             || normalizedPath.StartsWith(
                 normalizedRoot + Path.DirectorySeparatorChar,
                 StringComparison.OrdinalIgnoreCase);
+    }
+
+    // 四条标准兼容 Junction 由研究契约确定，链接位置固定在 AppData，
+    // 目标落在迁移后的配置环境内，因此可由目标路径直接推导。
+    private IReadOnlyList<CoordinatedJunctionTarget> DeriveStandardJunctions(
+        string codexDestinationPath,
+        string ccSwitchDestinationPath)
+    {
+        var roaming = _getFolderPath(
+            Environment.SpecialFolder.ApplicationData);
+        var local = _getFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        return
+        [
+            new CoordinatedJunctionTarget(
+                Path.Combine(roaming, "Codex"),
+                codexDestinationPath),
+            new CoordinatedJunctionTarget(
+                Path.Combine(local, "Codex"),
+                codexDestinationPath),
+            new CoordinatedJunctionTarget(
+                Path.Combine(local, "com.ccswitch.desktop"),
+                Path.Combine(
+                    ccSwitchDestinationPath,
+                    "appdata",
+                    "Local",
+                    "com.ccswitch.desktop")),
+            new CoordinatedJunctionTarget(
+                Path.Combine(roaming, "com.ccswitch.desktop"),
+                Path.Combine(
+                    ccSwitchDestinationPath,
+                    "appdata",
+                    "Roaming",
+                    "com.ccswitch.desktop"))
+        ];
     }
 
     private async Task<OperationRecord> SaveTransitionAsync(

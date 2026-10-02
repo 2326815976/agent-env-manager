@@ -75,7 +75,8 @@ public sealed class EnvironmentManager
         ICoordinatedStartupProbe? coordinatedStartupProbe = null,
         ICoordinatedHealthProbe? coordinatedHealthProbe = null,
         IShortcutEditor? shortcutEditor = null,
-        IMigrationSourceQuarantineStore? migrationSourceQuarantine = null)
+        IMigrationSourceQuarantineStore? migrationSourceQuarantine = null,
+        Func<Environment.SpecialFolder, string>? environmentFolderPath = null)
     {
         var clock = timeProvider ?? TimeProvider.System;
         _timeProvider = clock;
@@ -249,7 +250,8 @@ public sealed class EnvironmentManager
                 ?? new FileSystemMigrationSourceQuarantine(
                     resolvedManagerPaths.QuarantineDirectory),
             journal,
-            clock);
+            clock,
+            environmentFolderPath);
     }
 
     public Task<CoordinatedMigrationPreview>
