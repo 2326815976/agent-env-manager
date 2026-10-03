@@ -41,6 +41,24 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     }
 
     [Fact]
+    public async Task InspectAsync_falls_back_to_version_probe_for_package_managers()
+    {
+        var accessor = CreateAccessor();
+        accessor.AddPath(PathScope.User, @"D:\tools\pnpm");
+        accessor.AddPath(PathScope.Process, @"D:\tools\pnpm");
+        accessor.AddFile(@"D:\tools\pnpm\pnpm.cmd");
+
+        var report = await InspectAsync(
+            accessor,
+            new FakeVersionProbe("10.1.0"));
+
+        var pnpm = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "pnpm");
+        Assert.Equal("10.1.0", pnpm.Asset.Version);
+    }
+
+    [Fact]
     public async Task InspectAsync_reads_package_manager_version_from_manifest()
     {
         var accessor = CreateAccessor();
@@ -298,13 +316,26 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     }
 
     private static async Task<InspectionReport> InspectAsync(
-        FakeWindowsEnvironmentAccessor accessor)
+        FakeWindowsEnvironmentAccessor accessor,
+        IVersionProbe? versionProbe = null)
     {
         var manager = new EnvironmentManager(
             new WindowsEnvironmentProbe(
-                new WindowsEnvironmentSnapshotSource(accessor)),
+                new WindowsEnvironmentSnapshotSource(
+                    accessor,
+                    versionProbe)),
             assetHasher: new FixedAssetHasher("asset-hash"));
         return await manager.InspectAsync();
+    }
+
+    private sealed class FakeVersionProbe(string? version) : IVersionProbe
+    {
+        public string? TryReadVersion(
+            string command,
+            string executablePath)
+        {
+            return version;
+        }
     }
 
     private static FakeWindowsEnvironmentAccessor CreateAccessor()

@@ -1,11 +1,14 @@
 namespace AgentEnvManager.Core.Scanning;
 
 public sealed class WindowsEnvironmentSnapshotSource(
-    IWindowsEnvironmentAccessor? accessor = null)
+    IWindowsEnvironmentAccessor? accessor = null,
+    IVersionProbe? versionProbe = null)
     : IWindowsEnvironmentSnapshotSource
 {
     private readonly IWindowsEnvironmentAccessor _accessor =
         accessor ?? new WindowsEnvironmentAccessor();
+    private readonly IVersionProbe _versionProbe =
+        versionProbe ?? ProcessVersionProbe.Instance;
 
     public WindowsEnvironmentSnapshot Capture()
     {
@@ -18,7 +21,10 @@ public sealed class WindowsEnvironmentSnapshotSource(
 
         AddCandidates(
             executables,
-            PathCommandCollector.Collect(_accessor, effectivePathEntries),
+            PathCommandCollector.Collect(
+                _accessor,
+                effectivePathEntries,
+                _versionProbe),
             candidate => candidate.Path,
             (candidate, path) => candidate with { Path = path });
         AddCandidates(

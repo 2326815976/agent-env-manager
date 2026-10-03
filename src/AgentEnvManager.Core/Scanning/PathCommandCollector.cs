@@ -6,7 +6,8 @@ internal static class PathCommandCollector
 {
     public static IReadOnlyList<ExecutableCandidate> Collect(
         IWindowsEnvironmentAccessor accessor,
-        IReadOnlyList<EffectivePathEntry> pathEntries)
+        IReadOnlyList<EffectivePathEntry> pathEntries,
+        IVersionProbe? versionProbe = null)
     {
         var extensions = ReadExecutableExtensions(accessor);
         var candidates = new List<ExecutableCandidate>();
@@ -36,7 +37,8 @@ internal static class PathCommandCollector
                         path,
                         DiscoverySourceInfo.PathCommand,
                         pathEntry.Order,
-                        pathEntry.Scopes));
+                        pathEntry.Scopes,
+                        versionProbe));
                 }
             }
         }
@@ -60,7 +62,8 @@ internal static class PathCommandCollector
         string path,
         DiscoverySourceInfo source,
         int? resolutionOrder = null,
-        IReadOnlyList<PathScope>? scopes = null)
+        IReadOnlyList<PathScope>? scopes = null,
+        IVersionProbe? versionProbe = null)
     {
         return new ExecutableCandidate(
             command.Kind,
@@ -78,7 +81,8 @@ internal static class PathCommandCollector
                 ?? PackageManagerVersionReader.TryReadVersion(
                     command.Command,
                     path,
-                    accessor),
+                    accessor)
+                ?? versionProbe?.TryReadVersion(command.Command, path),
             resolutionOrder,
             scopes);
     }
