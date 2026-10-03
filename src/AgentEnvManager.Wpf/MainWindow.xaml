@@ -48,6 +48,14 @@
                     Margin="0,0,8,0" />
             <Button Content="确认切换"
                     Command="{Binding SwitchCommand}"
+                    Padding="16,8"
+                    Margin="0,0,16,0" />
+            <Button Content="预览取消纳管"
+                    Command="{Binding PreviewDeletionCommand}"
+                    Padding="16,8"
+                    Margin="0,0,8,0" />
+            <Button Content="确认取消纳管"
+                    Command="{Binding ConfirmDeletionCommand}"
                     Padding="16,8" />
         </StackPanel>
 

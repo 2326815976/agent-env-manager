@@ -1,5 +1,6 @@
 using AgentEnvManager.Core.Adoption;
 using AgentEnvManager.Core.Activation;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.EnvironmentVariables;
 using AgentEnvManager.Core.Inspection;
 using AgentEnvManager.Core.Operations;
@@ -11,6 +12,102 @@ namespace AgentEnvManager.Wpf.Tests;
 
 public sealed class MainViewModelTests
 {
+    [Fact]
+    public async Task Cancel_adoption_quarantines_managed_environment()
+    {
+        var observed = new ObservedEnvironment(
+            new EnvironmentAsset(
+                EnvironmentAssetKind.ToolRuntime,
+                "Node.js",
+                "24.1.0",
+                @"D:\Runtimes\node",
+                IsSystemComponent: false,
+                DiscoverySourceInfo.PathCommand),
+            new EnvironmentFingerprint("node-24"),
+            ManagementState.Managed,
+            HealthState.Unknown,
+            new EnvironmentIdentity("node-24"));
+        var client = new QuarantineManagerClient(observed);
+        var viewModel = new MainViewModel(client);
+        await viewModel.ScanAsync();
+        viewModel.SelectedEnvironment = Assert.Single(
+            viewModel.Environments);
+
+        await viewModel.PreviewDeletionAsync();
+
+        Assert.Contains("取消纳管预览", viewModel.StatusMessage);
+        Assert.Contains("隔离路径", viewModel.StatusMessage);
+        Assert.Equal(0, client.QuarantineCalls);
+
+        await viewModel.ConfirmDeletionAsync();
+
+        Assert.Equal(1, client.QuarantineCalls);
+        Assert.Contains("已取消纳管", viewModel.StatusMessage);
+    }
+
+    private sealed class QuarantineManagerClient(
+        ObservedEnvironment observed) : StubEnvironmentManagerClient
+    {
+        public int QuarantineCalls { get; private set; }
+
+        public override Task<InspectionReport> InspectAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new InspectionReport(
+                DateTimeOffset.UnixEpoch,
+                [observed],
+                [],
+                []));
+        }
+
+        public override Task<EnvironmentDeletionPreview>
+            PreviewEnvironmentDeletionAsync(
+                EnvironmentFingerprint fingerprint,
+                IReadOnlyList<string>? associatedState = null,
+                CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new EnvironmentDeletionPreview(
+                fingerprint,
+                new EnvironmentManifest(
+                    new EnvironmentIdentity("node-24"),
+                    fingerprint,
+                    EnvironmentAssetKind.ToolRuntime,
+                    "Node.js",
+                    "24.1.0",
+                    DiscoverySourceInfo.PathCommand,
+                    @"D:\Runtimes\node",
+                    @"C:\activation\node\current",
+                    "asset-hash",
+                    "recovery-1",
+                    "operation-1",
+                    IsSystemComponent: false,
+                    DateTimeOffset.UnixEpoch,
+                    "activation-identity",
+                    @"C:\shims\node"),
+                @"D:\Runtimes\node",
+                @"C:\quarantine\node",
+                @"C:\activation\node\current",
+                "环境将移入隔离区，可恢复。",
+                associatedState ?? [],
+                "delete-1",
+                "recovery-delete"));
+        }
+
+        public override Task<OperationRecord> QuarantineEnvironmentAsync(
+            EnvironmentDeletionPreview preview,
+            CancellationToken cancellationToken = default)
+        {
+            QuarantineCalls++;
+            return Task.FromResult(new OperationRecord(
+                "delete-1",
+                OperationType.Delete,
+                OperationState.Succeeded,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch,
+                "隔离 Node.js"));
+        }
+    }
+
     [Fact]
     public async Task ScanAsync_populates_rows_with_domain_labels()
     {

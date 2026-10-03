@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using AgentEnvManager.Core.Activation;
 using AgentEnvManager.Core.Adoption;
+using AgentEnvManager.Core.Deletion;
 using AgentEnvManager.Core.Inspection;
 
 namespace AgentEnvManager.Wpf;
@@ -12,11 +13,15 @@ public sealed class MainViewModel : ObservableObject
     private EnvironmentRowViewModel? _selectedEnvironment;
     private AdoptionPreview? _pendingAdoption;
     private VersionSwitchPreview? _pendingSwitch;
+    private EnvironmentDeletionPreview? _pendingDeletion;
     private bool _isBusy;
     private string _statusMessage = "尚未扫描。";
     private string _adoptionImpact = string.Empty;
     private string _pendingTarget = string.Empty;
     private string _pendingRecoveryPoint = string.Empty;
+    private string _deletionImpact = string.Empty;
+    private string _deletionTarget = string.Empty;
+    private string _deletionRecoveryPoint = string.Empty;
     private DateTimeOffset? _reportGeneratedAt;
 
     public MainViewModel(IEnvironmentManagerClient client)
@@ -73,6 +78,14 @@ public sealed class MainViewModel : ObservableObject
         SwitchCommand = new RelayCommand(
             SwitchAsync,
             () => !IsBusy && _pendingSwitch is not null,
+            HandleException);
+        PreviewDeletionCommand = new RelayCommand(
+            PreviewDeletionAsync,
+            () => !IsBusy && SelectedEnvironment?.IsManaged == true,
+            HandleException);
+        ConfirmDeletionCommand = new RelayCommand(
+            ConfirmDeletionAsync,
+            () => !IsBusy && _pendingDeletion is not null,
             HandleException);
     }
 
@@ -165,6 +178,28 @@ public sealed class MainViewModel : ObservableObject
     public ICommand PreviewSwitchCommand { get; }
 
     public ICommand SwitchCommand { get; }
+
+    public ICommand PreviewDeletionCommand { get; }
+
+    public ICommand ConfirmDeletionCommand { get; }
+
+    public string DeletionImpact
+    {
+        get => _deletionImpact;
+        private set => SetProperty(ref _deletionImpact, value);
+    }
+
+    public string DeletionTarget
+    {
+        get => _deletionTarget;
+        private set => SetProperty(ref _deletionTarget, value);
+    }
+
+    public string DeletionRecoveryPoint
+    {
+        get => _deletionRecoveryPoint;
+        private set => SetProperty(ref _deletionRecoveryPoint, value);
+    }
 
     public async Task ScanAsync()
     {
@@ -296,6 +331,60 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    public async Task PreviewDeletionAsync()
+    {
+        if (SelectedEnvironment?.IsManaged != true)
+        {
+            throw new InvalidOperationException(
+                "只有已纳管环境可以取消纳管。");
+        }
+
+        IsBusy = true;
+        try
+        {
+            ClearPendingDeletion();
+            _pendingDeletion =
+                await _client.PreviewEnvironmentDeletionAsync(
+                    new EnvironmentFingerprint(
+                        SelectedEnvironment.Fingerprint.Value));
+            DeletionImpact = _pendingDeletion.Impact;
+            DeletionTarget = _pendingDeletion.QuarantinePath;
+            DeletionRecoveryPoint =
+                _pendingDeletion.RecoveryPointId ?? "未记录";
+            StatusMessage =
+                $"取消纳管预览：{DeletionImpact} 隔离路径 " +
+                $"{DeletionTarget}；恢复点 {DeletionRecoveryPoint}。";
+            RaiseCommandStates();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ConfirmDeletionAsync()
+    {
+        if (_pendingDeletion is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var operation = await _client.QuarantineEnvironmentAsync(
+                _pendingDeletion);
+            ClearPendingDeletion();
+            await ScanAsync();
+            StatusMessage =
+                $"已取消纳管并移入隔离区，操作 ID：{operation.Id}。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void RaiseCommandStates()
     {
         ((RelayCommand)ScanCommand).RaiseCanExecuteChanged();
@@ -303,6 +392,8 @@ public sealed class MainViewModel : ObservableObject
         ((RelayCommand)AdoptCommand).RaiseCanExecuteChanged();
         ((RelayCommand)PreviewSwitchCommand).RaiseCanExecuteChanged();
         ((RelayCommand)SwitchCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)PreviewDeletionCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)ConfirmDeletionCommand).RaiseCanExecuteChanged();
     }
 
     private void HandleException(Exception exception)
@@ -317,6 +408,15 @@ public sealed class MainViewModel : ObservableObject
         AdoptionImpact = string.Empty;
         PendingTarget = string.Empty;
         PendingRecoveryPoint = string.Empty;
+        RaiseCommandStates();
+    }
+
+    private void ClearPendingDeletion()
+    {
+        _pendingDeletion = null;
+        DeletionImpact = string.Empty;
+        DeletionTarget = string.Empty;
+        DeletionRecoveryPoint = string.Empty;
         RaiseCommandStates();
     }
 
