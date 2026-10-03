@@ -59,7 +59,10 @@ internal static class PathCommandCollector
             SystemExecutableClassifier.IsCanonicalSystemShell(
                 command,
                 path,
-                accessor),
+                accessor)
+                || SystemExecutableClassifier.IsProtectedSystemPath(
+                    path,
+                    accessor),
             source,
             accessor.ReadFileVersion(path),
             resolutionOrder,

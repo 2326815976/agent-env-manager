@@ -41,6 +41,52 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     }
 
     [Fact]
+    public async Task InspectAsync_covers_cli_tools_and_protects_system_paths()
+    {
+        var accessor = CreateAccessor();
+        accessor.SetFolder(
+            Environment.SpecialFolder.Windows,
+            @"C:\WINDOWS");
+        accessor.SetFolder(
+            Environment.SpecialFolder.ProgramFiles,
+            @"C:\Program Files");
+        accessor.AddPath(PathScope.User, @"D:\Tools");
+        accessor.AddPath(PathScope.Process, @"D:\Tools");
+        accessor.AddPath(
+            PathScope.User,
+            @"C:\Program Files\WindowsApps\Store_1.0_x64__abc");
+        accessor.AddPath(
+            PathScope.Process,
+            @"C:\Program Files\WindowsApps\Store_1.0_x64__abc");
+        accessor.AddFile(@"D:\Tools\rg.exe", "15.2.0");
+        accessor.AddFile(@"D:\Tools\gh.exe", "2.102.0");
+        accessor.AddFile(@"D:\Tools\bash.exe");
+        accessor.AddFile(@"D:\Tools\codex.cmd");
+        accessor.AddFile(
+            @"C:\Program Files\WindowsApps\Store_1.0_x64__abc\winget.exe",
+            "1.26.0");
+
+        var report = await InspectAsync(accessor);
+
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "ripgrep");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "GitHub CLI");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "Git Bash");
+        Assert.Contains(
+            report.Environments,
+            item => item.Asset.Name == "Codex CLI");
+        var winget = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "winget");
+        Assert.True(winget.Asset.IsSystemComponent);
+    }
+
+    [Fact]
     public async Task InspectAsync_finds_chatgpt_through_compatibility_junctions()
     {
         var accessor = CreateAccessor();
