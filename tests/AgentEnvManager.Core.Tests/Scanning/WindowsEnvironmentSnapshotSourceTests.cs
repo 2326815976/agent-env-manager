@@ -41,6 +41,33 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     }
 
     [Fact]
+    public async Task InspectAsync_finds_chatgpt_through_compatibility_junctions()
+    {
+        var accessor = CreateAccessor();
+        accessor.SetFolder(
+            Environment.SpecialFolder.UserProfile,
+            @"C:\Users\tester");
+        accessor.SetFolder(
+            Environment.SpecialFolder.ApplicationData,
+            @"C:\Users\tester\AppData\Roaming");
+        accessor.SetFolder(
+            Environment.SpecialFolder.LocalApplicationData,
+            @"C:\Users\tester\AppData\Local");
+        var localJunction = @"C:\Users\tester\AppData\Local\Codex";
+        accessor.AddDirectory(localJunction);
+        accessor.SetLinkTarget(localJunction, @"E:\Codex\.codex");
+
+        var report = await InspectAsync(accessor);
+
+        // 未设置 CODEX_HOME 时，也应通过 %LOCALAPPDATA%\Codex 兼容
+        // Junction 找到真实配置环境。
+        var chatGpt = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "ChatGPT");
+        Assert.Equal(@"E:\Codex\.codex", chatGpt.Asset.Location);
+    }
+
+    [Fact]
     public async Task InspectAsync_reports_commands_found_in_multiple_path_locations()
     {
         var accessor = CreateAccessor();

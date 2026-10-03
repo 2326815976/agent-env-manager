@@ -12,6 +12,8 @@ internal static class AgentConfigurationCollector
             Environment.SpecialFolder.UserProfile);
         var localAppData = accessor.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData);
+        var roamingAppData = accessor.GetFolderPath(
+            Environment.SpecialFolder.ApplicationData);
         var codexHome = accessor.GetEnvironmentVariable("CODEX_HOME");
         var ccSwitchHome = accessor.GetEnvironmentVariable("CC_SWITCH_HOME");
         var workBuddyHome = accessor.GetEnvironmentVariable("WORKBUDDY_HOME");
@@ -100,6 +102,27 @@ internal static class AgentConfigurationCollector
                 new DiscoverySourceInfo(
                     DiscoverySource.AgentConfiguration,
                     "LocalAppData OpenAI")));
+        // 文档确认的兼容 Junction：%APPDATA%\Codex 与 %LOCALAPPDATA%\Codex
+        // 通常指向真实 Codex 配置环境；解析后若与 CODEX_HOME 或
+        // %USERPROFILE%\.codex 指向同一目录，会由去重逻辑合并为一条。
+        AddDirectory(
+            accessor,
+            candidates,
+            new DirectoryCandidate(
+                "ChatGPT",
+                Path.Combine(roamingAppData, "Codex"),
+                new DiscoverySourceInfo(
+                    DiscoverySource.AgentConfiguration,
+                    "%APPDATA%\\Codex 兼容 Junction")));
+        AddDirectory(
+            accessor,
+            candidates,
+            new DirectoryCandidate(
+                "ChatGPT",
+                Path.Combine(localAppData, "Codex"),
+                new DiscoverySourceInfo(
+                    DiscoverySource.AgentConfiguration,
+                    "%LOCALAPPDATA%\\Codex 兼容 Junction")));
 
         return candidates;
     }
@@ -114,7 +137,7 @@ internal static class AgentConfigurationCollector
             // 兼容路径（Junction）要解析到真实存储位置，否则环境清单会
             // 显示 C:\Users\<user>\.cc-switch 这类链接路径而不是真实目录。
             var target = accessor.ResolveLinkTarget(candidate.Path);
-            candidates.Add(string.IsNullOrWhiteSpace(target)
+            var resolved = string.IsNullOrWhiteSpace(target)
                 || string.Equals(
                     Path.GetFullPath(target),
                     Path.GetFullPath(candidate.Path),
@@ -126,7 +149,21 @@ internal static class AgentConfigurationCollector
                     Source = new DiscoverySourceInfo(
                         DiscoverySource.AgentConfiguration,
                         $"兼容 Junction → {candidate.Path}")
-                });
+                };
+            if (candidates.Any(existing =>
+                    string.Equals(
+                        existing.Name,
+                        resolved.Name,
+                        StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(
+                        Path.GetFullPath(existing.Path),
+                        Path.GetFullPath(resolved.Path),
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            candidates.Add(resolved);
         }
     }
 }

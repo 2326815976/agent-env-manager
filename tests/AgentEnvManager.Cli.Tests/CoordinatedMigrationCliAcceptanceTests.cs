@@ -52,7 +52,8 @@ public sealed class CoordinatedMigrationCliAcceptanceTests
                     new FileSystemMigrationSourceQuarantine(
                         Path.Combine(root, "quarantine")),
                     new StubTargetsProvider(),
-                    new FixedHealthProbe(isHealthy: true)));
+                    new FixedHealthProbe(isHealthy: true),
+                    folder => Path.Combine(root, "folders")));
             var adapter = new EnvironmentManagerCliAdapter(manager);
             var output = new StringWriter();
             var error = new StringWriter();

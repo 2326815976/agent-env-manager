@@ -898,20 +898,24 @@ public sealed class CoordinatedMigrationTests
             new StubEnvironmentProbe(new EnvironmentProbeResult([], [])),
             operationJournal: journal,
             userEnvironmentVariableStore: userEnvironmentVariableStore,
-            activationLink: link,
+            // 默认必须使用假实现：真实 WindowsJunctionActivationLink 会改动
+            // 本机 %APPDATA%\Codex 等真实兼容链接。
+            activationLink: link ?? new RecordingActivationLink(),
             managerPaths: ManagerPaths.Resolve(
                 Path.Combine(root, "state"),
                 Path.Combine(root, "data")),
             coordinatedMigration: new CoordinatedMigrationWiring(
                 processProbe,
                 startupProbe ?? new RecordingStartupProbe(),
-                shortcutEditor ?? new WindowsShortcutEditor(),
+                shortcutEditor ?? new RecordingShortcutEditor(
+                    ShortcutState.Empty),
                 sourceQuarantine
                     ?? new FileSystemMigrationSourceQuarantine(
                         Path.Combine(root, "quarantine")),
                 targetsProvider ?? new StubTargetsProvider(),
                 healthProbe ?? new RecordingHealthProbe(isHealthy: true),
-                environmentFolderPath));
+                environmentFolderPath
+                    ?? (_ => Path.Combine(root, "folders"))));
     }
 
     private sealed class StubTargetsProvider : ICoordinatedTargetsProvider
