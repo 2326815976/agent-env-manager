@@ -29,10 +29,30 @@ public interface IWindowsEnvironmentAccessor
     IReadOnlyList<WindowsAppPathRegistration> ReadAppPathRegistrations();
 
     string? ReadFileVersion(string path);
+
+    string? ResolveLinkTarget(string path);
 }
 
 public sealed class WindowsEnvironmentAccessor : IWindowsEnvironmentAccessor
 {
+    public string? ResolveLinkTarget(string path)
+    {
+        try
+        {
+            return Directory.ResolveLinkTarget(
+                path,
+                returnFinalTarget: true)?.FullName;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     public string? GetEnvironmentVariable(string name)
     {
         return Environment.GetEnvironmentVariable(name);

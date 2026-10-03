@@ -7,6 +7,40 @@ namespace AgentEnvManager.Core.Tests.Scanning;
 public sealed class WindowsEnvironmentSnapshotSourceTests
 {
     [Fact]
+    public async Task InspectAsync_resolves_compatibility_junctions_to_real_storage()
+    {
+        var accessor = CreateAccessor();
+        accessor.SetFolder(
+            Environment.SpecialFolder.UserProfile,
+            @"C:\Users\tester");
+        accessor.SetVariable("CODEX_HOME", @"E:\Codex\.codex");
+        accessor.AddDirectory(@"E:\Codex\.codex");
+        var ccSwitchJunction = @"C:\Users\tester\.cc-switch";
+        accessor.AddDirectory(ccSwitchJunction);
+        accessor.AddDirectory(@"E:\Codex\.cc-switch");
+        accessor.SetLinkTarget(
+            ccSwitchJunction,
+            @"E:\Codex\.cc-switch");
+
+        var report = await InspectAsync(accessor);
+
+        // 兼容 Junction 不能再以链接路径出现在环境清单里。
+        var ccSwitchLocations = report.Environments
+            .Where(item => item.Asset.Name == "CC Switch")
+            .Select(item => item.Asset.Location)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        Assert.Contains(@"E:\Codex\.cc-switch", ccSwitchLocations);
+        Assert.DoesNotContain(ccSwitchJunction, ccSwitchLocations);
+
+        // ChatGPT 的配置环境应来自 CODEX_HOME，而不是 Launcher 目录。
+        var chatGpt = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "ChatGPT");
+        Assert.Equal(@"E:\Codex\.codex", chatGpt.Asset.Location);
+    }
+
+    [Fact]
     public async Task InspectAsync_reports_commands_found_in_multiple_path_locations()
     {
         var accessor = CreateAccessor();
@@ -108,7 +142,7 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
 
         var chatGpt = Assert.Single(
             report.Environments,
-            item => item.Asset.Name == "ChatGPT");
+            item => item.Asset.Name == "ChatGPT Launcher");
         Assert.Equal(
             EnvironmentAssetKind.AgentConfiguration,
             chatGpt.Asset.Kind);
@@ -182,6 +216,8 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
         private readonly HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string?> _versions =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _linkTargets =
+            new(StringComparer.OrdinalIgnoreCase);
         private readonly List<WindowsAppPathRegistration> _appPaths = [];
 
         public string? GetEnvironmentVariable(string name)
@@ -238,6 +274,16 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
         public string? ReadFileVersion(string path)
         {
             return _versions.GetValueOrDefault(path);
+        }
+
+        public string? ResolveLinkTarget(string path)
+        {
+            return _linkTargets.GetValueOrDefault(path);
+        }
+
+        public void SetLinkTarget(string path, string target)
+        {
+            _linkTargets[path] = target;
         }
 
         public void SetVariable(string name, string? value)

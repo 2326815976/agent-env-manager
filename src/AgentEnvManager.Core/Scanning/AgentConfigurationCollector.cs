@@ -21,7 +21,7 @@ internal static class AgentConfigurationCollector
             accessor,
             candidates,
             new DirectoryCandidate(
-                "Codex",
+                "ChatGPT",
                 codexHome ?? Path.Combine(userProfile, ".codex"),
                 codexHome is null
                     ? DiscoverySourceInfo.AgentConfiguration
@@ -86,7 +86,7 @@ internal static class AgentConfigurationCollector
             accessor,
             candidates,
             new DirectoryCandidate(
-                "ChatGPT",
+                "ChatGPT Launcher",
                 Path.Combine(localAppData, "OpenAI", "ChatGPTLauncher"),
                 new DiscoverySourceInfo(
                     DiscoverySource.AgentConfiguration,
@@ -95,7 +95,7 @@ internal static class AgentConfigurationCollector
             accessor,
             candidates,
             new DirectoryCandidate(
-                "ChatGPT",
+                "ChatGPT 修复目录",
                 Path.Combine(localAppData, "OpenAI", "ChatGPTRepair"),
                 new DiscoverySourceInfo(
                     DiscoverySource.AgentConfiguration,
@@ -111,7 +111,22 @@ internal static class AgentConfigurationCollector
     {
         if (accessor.DirectoryExists(candidate.Path))
         {
-            candidates.Add(candidate);
+            // 兼容路径（Junction）要解析到真实存储位置，否则环境清单会
+            // 显示 C:\Users\<user>\.cc-switch 这类链接路径而不是真实目录。
+            var target = accessor.ResolveLinkTarget(candidate.Path);
+            candidates.Add(string.IsNullOrWhiteSpace(target)
+                || string.Equals(
+                    Path.GetFullPath(target),
+                    Path.GetFullPath(candidate.Path),
+                    StringComparison.OrdinalIgnoreCase)
+                ? candidate
+                : candidate with
+                {
+                    Path = Path.GetFullPath(target),
+                    Source = new DiscoverySourceInfo(
+                        DiscoverySource.AgentConfiguration,
+                        $"兼容 Junction → {candidate.Path}")
+                });
         }
     }
 }
