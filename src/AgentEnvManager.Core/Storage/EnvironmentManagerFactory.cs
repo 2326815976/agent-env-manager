@@ -45,10 +45,9 @@ public static class EnvironmentManagerFactory
             environmentPathMover: new FileSystemEnvironmentPathMover(),
             agentAdapters:
             [
-                new CodexAgentAdapter(
-                    new SystemAgentProcessRunner(),
-                    new FileAgentConfigurationBackupStore(
-                        paths.AgentBackupDirectory)),
+                // Codex 是 ChatGPT 的内置工具调用组件（第一版不作为独立 Agent
+                // 目标），因此默认只注册 ChatGPT；CodexAgentAdapter 仍保留，
+                // 需要时可显式注册。
                 new ChatGptAgentAdapter(
                     new SystemAgentProcessRunner(),
                     new FileAgentConfigurationBackupStore(
