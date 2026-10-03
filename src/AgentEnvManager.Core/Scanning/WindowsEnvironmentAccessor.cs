@@ -31,10 +31,30 @@ public interface IWindowsEnvironmentAccessor
     string? ReadFileVersion(string path);
 
     string? ResolveLinkTarget(string path);
+
+    string? ReadTextFile(string path);
 }
 
 public sealed class WindowsEnvironmentAccessor : IWindowsEnvironmentAccessor
 {
+    public string? ReadTextFile(string path)
+    {
+        try
+        {
+            return File.Exists(path)
+                ? File.ReadAllText(path)
+                : null;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     public string? ResolveLinkTarget(string path)
     {
         try

@@ -41,7 +41,17 @@ internal static class PathCommandCollector
             }
         }
 
-        return candidates;
+        // 同一安装目录下的多个入口（如 conda.exe 与 Library\bin\conda.bat、
+        // Git 的 bash.exe 与 usr\bin\bash.exe）合并为一条，保留 PATH 中
+        // 优先级最高的一条。
+        return candidates
+            .GroupBy(candidate => (
+                candidate.Kind,
+                candidate.Name,
+                Root: InstallRootHeuristics.GetInstallRoot(
+                    candidate.Path)))
+            .Select(group => group.First())
+            .ToArray();
     }
 
     internal static ExecutableCandidate CreateCandidate(
@@ -64,7 +74,11 @@ internal static class PathCommandCollector
                     path,
                     accessor),
             source,
-            accessor.ReadFileVersion(path),
+            accessor.ReadFileVersion(path)
+                ?? PackageManagerVersionReader.TryReadVersion(
+                    command.Command,
+                    path,
+                    accessor),
             resolutionOrder,
             scopes);
     }

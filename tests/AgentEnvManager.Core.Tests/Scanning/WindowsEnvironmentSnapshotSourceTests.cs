@@ -41,6 +41,52 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
     }
 
     [Fact]
+    public async Task InspectAsync_reads_package_manager_version_from_manifest()
+    {
+        var accessor = CreateAccessor();
+        accessor.AddPath(PathScope.User, @"D:\node");
+        accessor.AddPath(PathScope.Process, @"D:\node");
+        accessor.AddFile(@"D:\node\npm.CMD");
+        accessor.AddTextFile(
+            @"D:\node\node_modules\npm\package.json",
+            """{ "version": "11.21.0" }""");
+
+        var report = await InspectAsync(accessor);
+
+        var npm = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "npm");
+        Assert.Equal("11.21.0", npm.Asset.Version);
+    }
+
+    [Fact]
+    public async Task InspectAsync_merges_entries_from_the_same_install_root()
+    {
+        var accessor = CreateAccessor();
+        accessor.AddPath(
+            PathScope.User,
+            @"D:\Anaconda3\Scripts",
+            @"D:\Anaconda3\Library\bin");
+        accessor.AddPath(
+            PathScope.Process,
+            @"D:\Anaconda3\Scripts",
+            @"D:\Anaconda3\Library\bin");
+        accessor.AddFile(@"D:\Anaconda3\Scripts\conda.exe");
+        accessor.AddFile(@"D:\Anaconda3\Library\bin\conda.bat");
+
+        var report = await InspectAsync(accessor);
+
+        // conda.exe 与 Library\bin\conda.bat 属于同一安装，合并为一条。
+        var conda = Assert.Single(
+            report.Environments,
+            item => item.Asset.Name == "Conda");
+        Assert.EndsWith(
+            Path.Combine("Scripts", "conda.exe"),
+            conda.Asset.Location,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InspectAsync_covers_cli_tools_and_protects_system_paths()
     {
         var accessor = CreateAccessor();
@@ -291,6 +337,8 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _linkTargets =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _textFiles =
+            new(StringComparer.OrdinalIgnoreCase);
         private readonly List<WindowsAppPathRegistration> _appPaths = [];
 
         public string? GetEnvironmentVariable(string name)
@@ -357,6 +405,16 @@ public sealed class WindowsEnvironmentSnapshotSourceTests
         public void SetLinkTarget(string path, string target)
         {
             _linkTargets[path] = target;
+        }
+
+        public string? ReadTextFile(string path)
+        {
+            return _textFiles.GetValueOrDefault(path);
+        }
+
+        public void AddTextFile(string path, string content)
+        {
+            _textFiles[path] = content;
         }
 
         public void SetVariable(string name, string? value)
